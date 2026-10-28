@@ -1,0 +1,11 @@
+target/
+node_modules/
+.next/
+.env
+*.pem
+*.class
+*.log
+deploy/local/
+.idea/
+.vscode/
+.DS_Store

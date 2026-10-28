@@ -1,0 +1,5 @@
+# Active only with SPRING_PROFILES_ACTIVE=local. Never use in a deployed environment.
+app:
+  internal-feed-key: ${INTERNAL_FEED_KEY:dev-internal-key}
+  sms-provider: ${SMS_PROVIDER:logging}
+  email-provider: ${EMAIL_PROVIDER:logging}

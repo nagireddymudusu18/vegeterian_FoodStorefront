@@ -1,0 +1,71 @@
+server:
+  port: ${SERVER_PORT:8081}
+  forward-headers-strategy: native
+
+spring:
+  application:
+    name: identity-service
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/identity}
+    username: ${DB_USER:identity}
+    password: ${DB_PASSWORD:identity}
+    # No standing connections: one is opened when an action needs the database and closed after it sits idle.
+    hikari:
+      minimum-idle: ${DB_POOL_MIN_IDLE:0}
+      maximum-pool-size: ${DB_POOL_MAX:10}
+      idle-timeout: ${DB_POOL_IDLE_MS:10000}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: none
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+  jackson:
+    default-property-inclusion: non_null
+    serialization:
+      write-dates-as-timestamps: false
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      probes:
+        enabled: true
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+
+app:
+  internal-feed-key: ${INTERNAL_FEED_KEY:}
+  sms-provider: ${SMS_PROVIDER:}
+  email-provider: ${EMAIL_PROVIDER:}
+  app-base-url: ${APP_BASE_URL:http://localhost:8080}
+  admin-emails: ${APP_ADMIN_EMAILS:}
+  jwt:
+    issuer: identity-service
+    access-ttl-seconds: 900
+    private-key-pem: ${JWT_PRIVATE_KEY_PEM:}
+    public-key-pem: ${JWT_PUBLIC_KEY_PEM:}
+  pii:
+    enc-key: ${PII_ENC_KEY:}
+    hmac-key: ${PII_HMAC_KEY:}
+  otp:
+    ttl-seconds: 300
+    max-attempts: 5
+    phone-max-requests: 3
+    phone-window-seconds: 600
+    ip-max-requests: 20
+    ip-window-seconds: 600
+  refresh:
+    ttl-days: 30

@@ -1,0 +1,51 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: identity-service
+  labels: { app: identity-service }
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: identity-service }
+  template:
+    metadata:
+      labels: { app: identity-service }
+    spec:
+      containers:
+        - name: identity-service
+          image: foodapp/identity-service:latest
+          ports:
+            - containerPort: 8081
+          env:
+            - { name: SERVER_PORT, value: "8081" }
+            - { name: DB_URL, valueFrom: { secretKeyRef: { name: identity-service-db, key: DB_URL } } }
+            - { name: DB_USER, valueFrom: { secretKeyRef: { name: identity-service-db, key: DB_USER } } }
+            - { name: DB_PASSWORD, valueFrom: { secretKeyRef: { name: identity-service-db, key: DB_PASSWORD } } }
+            - { name: INTERNAL_FEED_KEY, valueFrom: { secretKeyRef: { name: foodapp-secrets, key: IDENTITY_FEED_KEY } } }
+            - { name: JWT_PUBLIC_KEY_PEM, valueFrom: { secretKeyRef: { name: foodapp-secrets, key: JWT_PUBLIC_KEY_PEM } } }
+            - { name: JWT_PRIVATE_KEY_PEM, valueFrom: { secretKeyRef: { name: foodapp-secrets, key: JWT_PRIVATE_KEY_PEM } } }
+            - { name: PII_ENC_KEY, valueFrom: { secretKeyRef: { name: foodapp-secrets, key: PII_ENC_KEY } } }
+            - { name: PII_HMAC_KEY, valueFrom: { secretKeyRef: { name: foodapp-secrets, key: PII_HMAC_KEY } } }
+            - { name: SMS_PROVIDER, value: logging }
+            - { name: EMAIL_PROVIDER, value: logging }
+          readinessProbe:
+            httpGet: { path: /actuator/health, port: 8081 }
+            initialDelaySeconds: 20
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /actuator/health, port: 8081 }
+            initialDelaySeconds: 40
+            periodSeconds: 20
+          resources:
+            requests: { cpu: 100m, memory: 384Mi }
+            limits: { memory: 640Mi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: identity-service
+spec:
+  selector: { app: identity-service }
+  ports:
+    - port: 8081
+      targetPort: 8081

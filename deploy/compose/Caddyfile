@@ -1,0 +1,45 @@
+{
+	auto_https off
+}
+
+(cors_dev) {
+	@cors_preflight method OPTIONS
+	header {
+		Access-Control-Allow-Origin "{$CORS_ALLOW_ORIGIN:http://localhost:3000}"
+		Access-Control-Allow-Methods "GET, POST, PUT, PATCH, DELETE, OPTIONS"
+		Access-Control-Allow-Headers "Authorization, Content-Type, Idempotency-Key"
+		Vary Origin
+	}
+	respond @cors_preflight 204
+}
+
+:8080 {
+	import cors_dev
+
+	handle_path /api/identity/* {
+		reverse_proxy identity-service:8081
+	}
+	handle_path /api/catalog/* {
+		reverse_proxy catalog-service:8082
+	}
+	handle_path /api/orders/* {
+		reverse_proxy order-service:8083 {
+			flush_interval -1
+		}
+	}
+	handle_path /api/payments/* {
+		reverse_proxy payment-service:8084
+	}
+	handle_path /api/fleet/* {
+		reverse_proxy fleet-service:8085 {
+			flush_interval -1
+		}
+	}
+	# Razorpay webhooks reach payment-service only through this explicit path.
+	handle /webhooks/razorpay {
+		reverse_proxy payment-service:8084
+	}
+	handle {
+		reverse_proxy storefront:3000
+	}
+}

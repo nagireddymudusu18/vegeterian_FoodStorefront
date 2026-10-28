@@ -1,0 +1,25 @@
+name: ci-storefront
+
+on:
+  push:
+    paths: ["storefront/**", ".github/workflows/ci-storefront.yml"]
+  pull_request:
+    paths: ["storefront/**", ".github/workflows/ci-storefront.yml"]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: storefront
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: storefront/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm test --if-present
+      - run: npm run build
