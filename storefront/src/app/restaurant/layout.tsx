@@ -18,7 +18,7 @@ export default function RestaurantLayout({ children }: { children: ReactNode }) 
       <header className="border-b border-stone-200 bg-orange-800 text-white">
         <div className="mx-auto flex max-w-4xl items-center gap-4 px-4 py-3">
           <Link href="/restaurant" className="text-lg font-extrabold tracking-tight">
-            FoodApp Kitchen
+            Veggo Eats Kitchen
           </Link>
           <button type="button" onClick={logout} className="ml-auto rounded-lg px-3 py-2 text-sm hover:bg-orange-700">
             Sign out

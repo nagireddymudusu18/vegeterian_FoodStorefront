@@ -73,6 +73,26 @@ class IdentityFlowIT {
     ObjectMapper mapper;
     @Autowired
     CapturingSmsSender sms;
+    @Autowired
+    in.foodapp.identity.events.OutboxService outbox;
+    @Autowired
+    org.springframework.transaction.PlatformTransactionManager txManager;
+
+    @Test
+    void outboxRefusesEventsThatBreakTheirContract() {
+        var tx = new org.springframework.transaction.support.TransactionTemplate(txManager);
+        java.util.UUID id = java.util.UUID.randomUUID();
+        // wrong field name (and the required one missing)
+        org.junit.jupiter.api.Assertions.assertThrows(AssertionError.class, () -> tx.executeWithoutResult(
+                s -> outbox.publish("UserRegistered", id, Map.of("user", id.toString()))));
+        // an event type with no contract
+        org.junit.jupiter.api.Assertions.assertThrows(AssertionError.class, () -> tx.executeWithoutResult(
+                s -> outbox.publish("NoSuchEvent", id, Map.of("userId", id.toString()))));
+        // another service's event
+        org.junit.jupiter.api.Assertions.assertThrows(AssertionError.class, () -> tx.executeWithoutResult(
+                s -> outbox.publish("PaymentFailed", id, Map.of("paymentId", id.toString(),
+                        "orderId", id.toString(), "reason", "x"))));
+    }
 
     // ---------- helpers ----------
 

@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "PaymentCaptured",
+  "description": "A payment succeeded. order-service moves CREATED to PAID only when amountPaise equals the order total.",
+  "x-producer": "payment-service",
+  "x-consumers": ["order-service"],
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["paymentId", "orderId", "amountPaise", "gatewayRef"],
+  "properties": {
+    "paymentId": { "type": "string", "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$" },
+    "orderId": { "type": "string", "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$" },
+    "amountPaise": { "type": "integer", "minimum": 1 },
+    "gatewayRef": { "type": ["string", "null"] }
+  },
+  "examples": [
+    {
+      "paymentId": "66666666-6666-4666-8666-666666666666",
+      "orderId": "44444444-4444-4444-8444-444444444444",
+      "amountPaise": 72090,
+      "gatewayRef": "fake_pay_0123456789abcdef"
+    }
+  ]
+}

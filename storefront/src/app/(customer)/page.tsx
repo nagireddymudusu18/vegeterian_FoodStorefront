@@ -250,7 +250,7 @@ export default function HomePage() {
         </span>
         <p className="text-sm font-semibold uppercase tracking-widest text-lime-100">Pure veg · Vegan · Jain</p>
         <h1 id="hero-h" className="mt-2 max-w-xl text-3xl font-extrabold leading-tight sm:text-5xl">
-          Fresh, certified-veg food at your door
+          Veg, on the go.
         </h1>
         <p className="mt-3 max-w-lg text-green-50">
           Every kitchen is checked for its veg standard, so you can order with confidence.

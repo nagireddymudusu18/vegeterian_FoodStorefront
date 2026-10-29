@@ -4,8 +4,8 @@ import "./globals.css";
 import { Providers } from "@/shell/Providers";
 
 export const metadata: Metadata = {
-  title: "FoodApp: order veg, vegan and Jain food",
-  description: "Diet-first food delivery with certified kitchens.",
+  title: { default: "Veggo Eats: Veg, on the go.", template: "%s | Veggo Eats" },
+  description: "Veggo Eats delivers pure veg, vegan and Jain food from certified kitchens. Veg, on the go.",
 };
 
 export const viewport: Viewport = { width: "device-width", initialScale: 1 };

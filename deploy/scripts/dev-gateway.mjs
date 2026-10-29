@@ -1,6 +1,7 @@
 // Docker-free stand-in for the Caddy edge: node deploy/scripts/dev-gateway.mjs
 // :8080 -> /api/<service>/* (prefix stripped, streaming-safe for SSE) and everything else to the storefront on :3000.
 import http from "node:http";
+import { randomUUID } from "node:crypto";
 
 const PORT = Number(process.env.GATEWAY_PORT || 8080);
 const ORIGIN = process.env.CORS_ALLOW_ORIGIN || "http://localhost:3000";
@@ -27,17 +28,25 @@ http
       res.writeHead(204, {
         "Access-Control-Allow-Origin": ORIGIN,
         "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
-        "Access-Control-Allow-Headers": "Authorization, Content-Type, Idempotency-Key",
+        "Access-Control-Allow-Headers": "Authorization, Content-Type, Idempotency-Key, X-Request-Id",
         Vary: "Origin",
       });
       res.end();
       return;
     }
     const t = target(req.url || "/");
+    // every request gets an id (kept if the caller sent one); services log it and echo it back
+    const forwarded = { ...req.headers };
+    if (!forwarded["x-request-id"]) forwarded["x-request-id"] = randomUUID();
     const upstream = http.request(
-      { host: "127.0.0.1", port: t.port, path: t.path, method: req.method, headers: req.headers },
+      { host: "127.0.0.1", port: t.port, path: t.path, method: req.method, headers: forwarded },
       (up) => {
-        const headers = { ...up.headers, "Access-Control-Allow-Origin": ORIGIN, Vary: "Origin" };
+        const headers = {
+          ...up.headers,
+          "Access-Control-Allow-Origin": ORIGIN,
+          "Access-Control-Expose-Headers": "X-Request-Id",
+          Vary: "Origin",
+        };
         res.writeHead(up.statusCode || 502, headers);
         up.pipe(res);
         res.on("close", () => up.destroy());

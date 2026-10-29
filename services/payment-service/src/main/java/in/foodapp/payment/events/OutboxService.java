@@ -2,6 +2,7 @@ package in.foodapp.payment.events;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowCallbackHandler;
 import org.springframework.stereotype.Service;
@@ -20,10 +21,12 @@ public class OutboxService {
 
     private final JdbcTemplate jdbc;
     private final ObjectMapper objectMapper;
+    private final ObjectProvider<OutboxValidator> validators;
 
-    public OutboxService(JdbcTemplate jdbc, ObjectMapper objectMapper) {
+    public OutboxService(JdbcTemplate jdbc, ObjectMapper objectMapper, ObjectProvider<OutboxValidator> validators) {
         this.jdbc = jdbc;
         this.objectMapper = objectMapper;
+        this.validators = validators;
     }
 
     @Transactional(propagation = Propagation.MANDATORY)
@@ -34,6 +37,7 @@ public class OutboxService {
         } catch (JsonProcessingException e) {
             throw new IllegalStateException("cannot serialise outbox payload", e);
         }
+        validators.orderedStream().forEach(v -> v.validate(type, json));
         jdbc.query("SELECT pg_advisory_xact_lock(?)", (RowCallbackHandler) rs -> { }, OUTBOX_LOCK_KEY);
         jdbc.update("INSERT INTO outbox (type, aggregate_id, payload) VALUES (?, ?, CAST(? AS jsonb))",
                 type, aggregateId, json);

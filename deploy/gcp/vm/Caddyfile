@@ -1,0 +1,49 @@
+{
+	email {$ACME_EMAIL}
+}
+
+# Sandbox VM: one host (<ip>.sslip.io), storefront at / and every API under /api/<service>/ (same origin).
+# Services listen on localhost only; Caddy is the only public listener.
+{$DOMAIN} {
+	encode zstd gzip
+
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		-Server
+	}
+
+	@noreqid not header X-Request-Id *
+	request_header @noreqid X-Request-Id {http.request.uuid}
+
+	@internal path /api/*/internal/* /api/*/actuator/* /internal/* /actuator/*
+	handle @internal {
+		respond 404
+	}
+	handle_path /api/identity/* {
+		reverse_proxy 127.0.0.1:8081
+	}
+	handle_path /api/catalog/* {
+		reverse_proxy 127.0.0.1:8082
+	}
+	handle_path /api/orders/* {
+		reverse_proxy 127.0.0.1:8083 {
+			flush_interval -1
+		}
+	}
+	handle_path /api/payments/* {
+		reverse_proxy 127.0.0.1:8084
+	}
+	handle_path /api/fleet/* {
+		reverse_proxy 127.0.0.1:8085 {
+			flush_interval -1
+		}
+	}
+	handle /webhooks/razorpay {
+		reverse_proxy 127.0.0.1:8084
+	}
+	handle {
+		reverse_proxy 127.0.0.1:3000
+	}
+}

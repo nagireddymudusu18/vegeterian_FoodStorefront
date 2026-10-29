@@ -30,19 +30,16 @@ public class FleetEventHandler {
         this.transitions = transitions;
     }
 
+    /** A malformed payload throws {@link MalformedEventException}; the poller parks the event in feed_dead_letter. */
     @Transactional
     public void handle(FeedEvent event) {
         if (event.type() == null) {
             return;
         }
-        try {
-            if ("DeliveryAssigned".equals(event.type())) {
-                onAssigned(event);
-            } else {
-                log.debug("Ignoring fleet event type {}", event.type());
-            }
-        } catch (MalformedEventException e) {
-            log.warn("Skipping malformed fleet event id={} type={}: {}", event.id(), event.type(), e.getMessage());
+        if ("DeliveryAssigned".equals(event.type())) {
+            onAssigned(event);
+        } else {
+            log.debug("Ignoring fleet event type {}", event.type());
         }
     }
 

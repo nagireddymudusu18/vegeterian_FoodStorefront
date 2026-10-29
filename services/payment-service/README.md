@@ -10,6 +10,8 @@ Payments, double-entry ledger and refunds for the India food-delivery marketplac
 The merchant account is not approved yet, so there are **no live gateway calls**. `GATEWAY=fake` (default) runs the
 whole order flow locally; `GATEWAY=razorpay` is a stub whose API calls throw
 `UnsupportedOperationException("pending merchant approval")` (webhook signature verification is real).
+The fake gateway marks every payment as paid without charging anyone, so it **refuses to start** unless
+`ALLOW_FAKE_GATEWAY=true` (set by the local stack and meant for staging only; never in production).
 
 ## Endpoints
 
@@ -61,6 +63,7 @@ Base package `in.foodapp.payment` (`PaymentServiceApplication` lives in the root
 | `INTERNAL_FEED_KEY` | `dev-internal-key` | feed key (change outside local dev) |
 | `JWT_PUBLIC_KEY_PEM` | *(none, required)* | identity-service RS256 public key; literal `\n` allowed. Startup fails fast if missing. |
 | `GATEWAY` | `fake` | `fake` or `razorpay` |
+| `ALLOW_FAKE_GATEWAY` | `false` | must be `true` for `GATEWAY=fake` to start (local and staging only) |
 | `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, `RAZORPAY_WEBHOOK_SECRET` | empty | webhook secret also used by the fake gateway |
 | `JAVA_OPTS` (container) | `-XX:MaxRAMPercentage=70` | |
 

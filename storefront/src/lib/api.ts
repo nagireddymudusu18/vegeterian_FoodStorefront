@@ -102,13 +102,16 @@ export class ApiError extends Error {
   readonly status: number;
   readonly title: string;
   readonly detail?: string;
+  /** The X-Request-Id the server answered with; quote it to support to find the request in the logs. */
+  readonly requestId?: string;
 
-  constructor(status: number, title: string, detail?: string) {
+  constructor(status: number, title: string, detail?: string, requestId?: string) {
     super(detail ? `${title}: ${detail}` : title);
     this.name = "ApiError";
     this.status = status;
     this.title = title;
     this.detail = detail;
+    this.requestId = requestId;
   }
 }
 
@@ -117,6 +120,18 @@ export function errorMessage(e: unknown): string {
   if (e instanceof ApiError) return e.detail ? `${e.title}. ${e.detail}` : e.title;
   if (e instanceof Error) return e.message;
   return "Something went wrong";
+}
+
+/** The request id to show for a server-side failure (5xx) so it can be quoted to support; undefined otherwise. */
+export function errorReference(e: unknown): string | undefined {
+  return e instanceof ApiError && e.status >= 500 ? e.requestId : undefined;
+}
+
+/** A fresh id for the X-Request-Id header; matches what the services accept (letters, digits, . _ -, 8 to 64 long). */
+export function newRequestId(): string {
+  const c = globalThis.crypto;
+  if (c && typeof c.randomUUID === "function") return c.randomUUID();
+  return `r-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
 }
 
 async function toApiError(res: Response): Promise<ApiError> {
@@ -136,7 +151,7 @@ async function toApiError(res: Response): Promise<ApiError> {
   } catch {
     /* ignore */
   }
-  return new ApiError(res.status, title, detail);
+  return new ApiError(res.status, title, detail, res.headers.get("X-Request-Id") ?? undefined);
 }
 
 // ---------- Core request ----------
@@ -162,7 +177,10 @@ function buildUrl(service: Service, path: string, query?: ReqOptions["query"]): 
 }
 
 async function send(service: Service, path: string, o: ReqOptions, token?: string): Promise<Response> {
-  const headers: Record<string, string> = { Accept: "application/json, application/problem+json" };
+  const headers: Record<string, string> = {
+    Accept: "application/json, application/problem+json",
+    "X-Request-Id": newRequestId(),
+  };
   if (o.body !== undefined) headers["Content-Type"] = "application/json";
   if (o.idempotencyKey) headers["Idempotency-Key"] = o.idempotencyKey;
   if (token) headers.Authorization = `Bearer ${token}`;
@@ -216,6 +234,12 @@ export function redirectToLogin(): void {
   if (typeof window === "undefined") return;
   const here = window.location.pathname + window.location.search;
   if (window.location.pathname.startsWith("/login")) return;
+  if (window.location.pathname.startsWith("/admin")) {
+    // admins sign in on their own page, and the invite page is reachable without a session
+    if (/^\/admin\/(login|accept)/.test(window.location.pathname)) return;
+    window.location.assign(`/admin/login?next=${encodeURIComponent(here)}`);
+    return;
+  }
   window.location.assign(`/login?next=${encodeURIComponent(here)}`);
 }
 
@@ -305,8 +329,40 @@ export const identity = {
   addCredentials: (email: string, password: string) =>
     request<void>("identity", "/me/credentials", { method: "POST", auth: true, body: { email: email.trim(), password } }),
 
+  /**
+   * Admin sign-in (email and password only). Resolves to `{}` once signed in, or `{ challengeId }` when an
+   * emailed code is also required; finish that with adminVerifyCode.
+   */
+  async adminLogin(email: string, password: string): Promise<{ challengeId?: string }> {
+    const r = await request<{ tokens?: TokenResponse; challengeId?: string }>("identity", "/auth/admin/login", {
+      method: "POST",
+      body: { email: email.trim(), password },
+    });
+    if (r.tokens) {
+      storeTokens(r.tokens);
+      return {};
+    }
+    return { challengeId: r.challengeId };
+  },
+
+  async adminVerifyCode(challengeId: string, code: string): Promise<TokenResponse> {
+    return storeTokens(
+      await request<TokenResponse>("identity", "/auth/admin/login/verify", {
+        method: "POST",
+        body: { challengeId, code: code.trim() },
+      }),
+    );
+  },
+
+  acceptAdminInvite: (token: string, email: string, password: string) =>
+    request<void>("identity", "/auth/admin/invite/accept", {
+      method: "POST",
+      body: { token, email: email.trim(), password },
+    }),
+
   me: () => request<Me>("identity", "/me", { auth: true }),
   isAdmin: (me: Me | null) => !!me?.roles?.includes("ADMIN"),
+  isSuperAdmin: (me: Me | null) => !!me?.roles?.includes("SUPER_ADMIN"),
   deleteMe: () => request<void>("identity", "/me", { method: "DELETE", auth: true }),
 };
 // ---------- Catalog ----------
@@ -393,6 +449,32 @@ export const payments = {
       idempotencyKey,
       body: { orderId, amountPaise },
     }),
+};
+
+// ---------- Admin team (main admin only) ----------
+
+export interface TeamMember {
+  userId: string;
+  name?: string | null;
+  /** Masked, e.g. a***@example.com. */
+  email: string;
+  main: boolean;
+}
+
+export interface TeamInvite {
+  id: string;
+  email: string;
+  expiresAt: string;
+}
+
+export const adminTeam = {
+  get: () => request<{ members: TeamMember[]; invites: TeamInvite[] }>("identity", "/admin/team", { auth: true }),
+  invite: (email: string) =>
+    request<void>("identity", "/admin/team/invites", { method: "POST", auth: true, body: { email: email.trim() } }),
+  revokeInvite: (id: string) =>
+    request<void>("identity", `/admin/team/invites/${encodeURIComponent(id)}`, { method: "DELETE", auth: true }),
+  removeMember: (userId: string) =>
+    request<void>("identity", `/admin/team/members/${encodeURIComponent(userId)}`, { method: "DELETE", auth: true }),
 };
 
 // ---------- Feature flags ----------

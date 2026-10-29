@@ -34,11 +34,19 @@ management:
   endpoints:
     web:
       exposure:
-        include: health
+        include: health,prometheus
   endpoint:
     health:
       probes:
         enabled: true
+  metrics:
+    tags:
+      application: ${spring.application.name}
+
+logging:
+  pattern:
+    # the request id (see RequestIdFilter) is in every log line written while a request is served
+    level: "%5p [%X{requestId:-}]"
 
 springdoc:
   api-docs:
@@ -51,7 +59,7 @@ app:
   sms-provider: ${SMS_PROVIDER:}
   email-provider: ${EMAIL_PROVIDER:}
   app-base-url: ${APP_BASE_URL:http://localhost:8080}
-  admin-emails: ${APP_ADMIN_EMAILS:}
+  main-admin-email: ${APP_MAIN_ADMIN_EMAIL:}
   jwt:
     issuer: identity-service
     access-ttl-seconds: 900

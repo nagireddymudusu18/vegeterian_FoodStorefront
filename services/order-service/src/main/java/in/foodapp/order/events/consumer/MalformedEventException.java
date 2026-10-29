@@ -3,7 +3,7 @@ package in.foodapp.order.events.consumer;
 import com.fasterxml.jackson.databind.JsonNode;
 import java.util.UUID;
 
-/** Raised (before any DB work) when a feed event payload is missing/invalid; the event is skipped. */
+/** Raised (before any DB work) when a feed event payload is missing or invalid; the poller parks the event in feed_dead_letter. */
 public class MalformedEventException extends RuntimeException {
 
     public MalformedEventException(String message) {

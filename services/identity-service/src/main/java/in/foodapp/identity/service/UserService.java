@@ -4,27 +4,21 @@ import in.foodapp.identity.api.ApiException;
 import in.foodapp.identity.api.Dtos;
 import in.foodapp.identity.events.OutboxService;
 import in.foodapp.identity.infra.crypto.PiiCipher;
-import in.foodapp.identity.infra.jwt.JwtService;
 import in.foodapp.identity.persistence.Consent;
 import in.foodapp.identity.persistence.ConsentRepository;
 import in.foodapp.identity.persistence.User;
 import in.foodapp.identity.persistence.UserRepository;
 import java.time.Clock;
 import java.time.Instant;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
 import java.util.Locale;
-import java.util.Set;
-import java.util.stream.Collectors;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+/** Account lifecycle: phone sign-in and sign-up, profile, consent, partner and owner roles, erasure. */
 @Service
 public class UserService {
 
@@ -33,40 +27,23 @@ public class UserService {
     private final OtpService otp;
     private final RefreshTokenService refreshTokens;
     private final OutboxService outbox;
-    private final JwtService jwt;
     private final PiiCipher cipher;
     private final Clock clock;
-    private final Set<String> adminEmailHashes;
+    private final RoleResolver roles;
+    private final TokenIssuer tokens;
 
     public UserService(UserRepository users, ConsentRepository consents, OtpService otp,
-                       RefreshTokenService refreshTokens, OutboxService outbox, JwtService jwt, PiiCipher cipher,
-                       Clock clock, @Value("${app.admin-emails:}") String adminEmails) {
+                       RefreshTokenService refreshTokens, OutboxService outbox, PiiCipher cipher,
+                       Clock clock, RoleResolver roles, TokenIssuer tokens) {
         this.users = users;
         this.consents = consents;
         this.otp = otp;
         this.refreshTokens = refreshTokens;
         this.outbox = outbox;
-        this.jwt = jwt;
         this.cipher = cipher;
         this.clock = clock;
-        this.adminEmailHashes = Arrays.stream(adminEmails.split(","))
-                .map(String::trim).filter(s -> !s.isEmpty()).map(s -> s.toLowerCase(Locale.ROOT))
-                .map(e -> cipher.blindIndex("email:" + e)).collect(Collectors.toUnmodifiableSet());
-    }
-
-    /** Stored roles plus ADMIN for verified accounts whose email is on the bootstrap list (APP_ADMIN_EMAILS). */
-    private List<String> rolesOf(User user) {
-        List<String> roles = new ArrayList<>(List.of(user.getRoles()));
-        if (user.isEmailVerified() && user.getEmailHash() != null && adminEmailHashes.contains(user.getEmailHash())
-                && !roles.contains("ADMIN")) {
-            roles.add("ADMIN");
-        }
-        return roles;
-    }
-
-    public Dtos.TokenResponse tokenResponse(User user, String rawRefreshToken) {
-        String access = jwt.issueAccessToken(user.getId(), rolesOf(user));
-        return new Dtos.TokenResponse(access, rawRefreshToken, jwt.accessTtlSeconds());
+        this.roles = roles;
+        this.tokens = tokens;
     }
 
     /**
@@ -85,6 +62,10 @@ public class UserService {
         User user;
         if (existing.isPresent()) {
             user = existing.get();
+            if (roles.isAdmin(user)) {
+                throw new ApiException(HttpStatus.FORBIDDEN, "Use the admin sign-in",
+                        "Administrator accounts sign in with email and password on the admin page");
+            }
         } else {
             if (consent == null || !consent.granted()) {
                 throw ApiException.badRequest("Consent must be granted to create an account");
@@ -102,7 +83,7 @@ public class UserService {
                     consent.granted(), now, ip));
         }
         String refresh = refreshTokens.issueNewFamily(user.getId());
-        return tokenResponse(user, refresh);
+        return tokens.tokenResponse(user, refresh);
     }
 
     @Transactional(readOnly = true)
@@ -113,7 +94,7 @@ public class UserService {
         String email = user.getEmailEnc() == null ? null
                 : PasswordService.maskEmail(cipher.decrypt(user.getEmailEnc()));
         return new Dtos.MeResponse(user.getId(), name, phone, email, user.isEmailVerified(),
-                user.getPasswordHash() != null, rolesOf(user), user.getStatus(), user.getCreatedAt());
+                user.getPasswordHash() != null, roles.rolesOf(user), user.getStatus(), user.getCreatedAt());
     }
 
     /** Gives the account the PARTNER (delivery) role. Needs a verified phone so riders are reachable. */

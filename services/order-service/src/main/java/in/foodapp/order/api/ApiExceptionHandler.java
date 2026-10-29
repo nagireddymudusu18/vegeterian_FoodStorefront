@@ -66,6 +66,12 @@ public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
         return problem(pd);
     }
 
+    /** A client that closed a live-update stream while it was being written to is routine, not an error. */
+    @ExceptionHandler(java.io.IOException.class)
+    void clientGone(java.io.IOException ex) {
+        log.debug("Client disconnected: {}", ex.toString());
+    }
+
     @ExceptionHandler(Exception.class)
     ResponseEntity<ProblemDetail> handleAny(Exception ex) {
         log.error("Unhandled error", ex);

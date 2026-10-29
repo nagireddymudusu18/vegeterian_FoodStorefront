@@ -23,8 +23,11 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class RefreshTokenService {
 
-    /** A freshly issued raw refresh token (never stored) for a user. */
-    public record Issued(User user, String rawToken) {
+    /** A freshly issued raw refresh token (never stored) for a user; adminSession is carried over on rotation. */
+    public record Issued(User user, String rawToken, boolean adminSession) {
+        public Issued(User user, String rawToken) {
+            this(user, rawToken, false);
+        }
     }
 
     private final RefreshTokenRepository tokens;
@@ -59,14 +62,21 @@ public class RefreshTokenService {
     /** Starts a new token family for a user (login). */
     @Transactional
     public String issueNewFamily(UUID userId) {
-        return create(userId, UUID.randomUUID(), null).rawToken();
+        return create(userId, UUID.randomUUID(), null, false).rawToken();
     }
 
-    private Created create(UUID userId, UUID familyId, RefreshToken previous) {
+    /** Starts a family for the admin sign-in; only these may later be refreshed into admin tokens. */
+    @Transactional
+    public String issueNewAdminFamily(UUID userId) {
+        return create(userId, UUID.randomUUID(), null, true).rawToken();
+    }
+
+    private Created create(UUID userId, UUID familyId, RefreshToken previous, boolean adminSession) {
         Instant now = clock.instant();
         String raw = newRaw();
         RefreshToken t = new RefreshToken(UUID.randomUUID(), userId, hash(raw), familyId,
                 now.plus(props.refresh().ttlDays(), ChronoUnit.DAYS), now);
+        t.setAdminSession(adminSession);
         tokens.save(t);
         if (previous != null) {
             previous.setRevoked(true);
@@ -102,8 +112,8 @@ public class RefreshTokenService {
             tokens.revokeFamily(current.getFamilyId());
             throw ApiException.unauthorized("Invalid refresh token");
         }
-        Created created = create(current.getUserId(), current.getFamilyId(), current);
-        return new Issued(user.get(), created.rawToken());
+        Created created = create(current.getUserId(), current.getFamilyId(), current, current.isAdminSession());
+        return new Issued(user.get(), created.rawToken(), current.isAdminSession());
     }
 
     /** Revokes the family of the presented token (logout). Unknown tokens are ignored (idempotent). */

@@ -176,6 +176,10 @@ public class User {
         roles = next;
     }
 
+    public void removeRole(String role) {
+        roles = java.util.Arrays.stream(roles).filter(r -> !r.equals(role)).toArray(String[]::new);
+    }
+
     public String[] getRoles() {
         return roles;
     }

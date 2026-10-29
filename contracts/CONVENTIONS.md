@@ -58,7 +58,17 @@ Consumers poll (`@Scheduled`, default every 2 s, env `<PRODUCER>_FEED_URL`, `<PR
 cursor in table `feed_cursor(source TEXT PK, last_id BIGINT)`, and apply events **idempotently** (upsert by
 aggregate id; ignore stale events). If the producer is down, log at WARN and retry next tick: never fail startup.
 
+**Failing events never block the feed.** A batch is applied in one transaction; if it fails, the consumer re-applies
+the events one at a time. A failing event is retried on later polls (`FEED_MAX_ATTEMPTS`, default 5, counted in
+`feed_failure`); after that, or at once for a malformed payload, it is parked in `feed_dead_letter` (payload and
+error kept) and the cursor moves on. Handlers throw on malformed events instead of skipping them. An ADMIN lists parked
+events with `GET /admin/dead-letters` (order-service) or `GET /fleet/admin/dead-letters` (fleet-service) and calls
+`POST .../{id}/retry` (re-applies it; stays parked with the error if it still fails) or `POST .../{id}/discard`.
+
 ### Event payloads (all fields required unless noted)
+The machine-checked definition of every event is in [`events/`](events/README.md) (JSON Schema, one file per event,
+with producer, consumers and a golden example); the list below is a summary. Producers and consumers are tested
+against those files.
 catalog-service:
 - `RestaurantUpserted` `{restaurantId, name, lat, lng, open, deliveryRadiusMeters, kitchenCertificationLevel, fssaiNumber, ownerUserId (nullable UUID; the restaurant owner's user id = JWT `sub`)}`
 - `MenuItemUpserted` `{itemId, restaurantId, name, pricePaise, isPureVeg, isVegan, isJain, available}`

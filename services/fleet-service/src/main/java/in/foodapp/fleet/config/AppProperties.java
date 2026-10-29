@@ -9,6 +9,6 @@ public record AppProperties(
         int maxActiveDeliveries,
         Feed feed) {
 
-    public record Feed(String orderUrl, String orderKey, int batchSize) {
+    public record Feed(String orderUrl, String orderKey, int batchSize, int maxAttempts) {
     }
 }

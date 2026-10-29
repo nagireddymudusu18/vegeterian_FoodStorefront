@@ -32,6 +32,7 @@ const lines = [
   `FLEET_FEED_KEY=${token()}`,
   `DB_PASSWORD=${token()}`,
   "GATEWAY=fake",
+  "ALLOW_FAKE_GATEWAY=true",
   "RAZORPAY_KEY_ID=",
   "RAZORPAY_KEY_SECRET=",
   "RAZORPAY_WEBHOOK_SECRET=",

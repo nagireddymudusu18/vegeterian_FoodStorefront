@@ -42,10 +42,12 @@ public class SecurityConfig {
                 .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .exceptionHandling(e -> e.authenticationEntryPoint(problems).accessDeniedHandler(problems))
                 .authorizeHttpRequests(a -> a
-                        .requestMatchers("/actuator/health/**", "/actuator/info", "/v3/api-docs/**",
+                        .requestMatchers("/actuator/health/**", "/actuator/info", "/actuator/prometheus",
+                                "/v3/api-docs/**",
                                 "/swagger-ui/**", "/swagger-ui.html").permitAll()
                         // key-enforced inside the controller (X-Internal-Key), not by JWT
                         .requestMatchers("/internal/**").permitAll()
+                        .requestMatchers("/admin/**").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.GET, "/orders/track/*").permitAll()
                         .requestMatchers(HttpMethod.GET, "/orders/restaurant", "/orders/restaurant/stream")
                                 .hasAnyRole("RESTAURANT", "ADMIN")

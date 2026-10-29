@@ -94,6 +94,12 @@ RIDER_ASSIGNED -> PICKED_UP; PICKED_UP -> DELIVERED; REJECTED_BY_MERCHANT -> REF
 advance) is one DB transaction. Producer down -> WARN and retry next tick; startup never fails. A blank feed key disables
 that poller (one INFO log).
 
+**Failing events (migration V7).** If a batch fails, its events are re-applied one at a time. A failing event is retried
+on later polls (`FEED_MAX_ATTEMPTS`, default 5, counted in `feed_failure`); after that, or at once when the payload is
+malformed (`MalformedEventException`), it is parked in `feed_dead_letter` and the cursor moves on, so one bad event never
+blocks the feed. ADMIN endpoints: `GET /admin/dead-letters`, `POST /admin/dead-letters/{id}/retry` (re-applies it; stays
+parked with the error if it still fails) and `POST /admin/dead-letters/{id}/discard`. Parking is logged at ERROR.
+
 - Catalog: `RestaurantUpserted`, `MenuItemUpserted`, `MenuItemAvailabilityChanged` upsert the replicas; events whose id
   is not newer than the row's `source_event_id` are ignored; unknown types ignored.
 - Payment: `PaymentCaptured` (CREATED -> PAID only if `amountPaise == totalPaise`, else an `AMOUNT_MISMATCH`
@@ -111,6 +117,7 @@ that poller (one INFO log).
 | `CATALOG_FEED_URL` / `CATALOG_FEED_KEY` | `http://localhost:8082` / empty (polling off) | |
 | `PAYMENT_FEED_URL` / `PAYMENT_FEED_KEY` | `http://localhost:8084` / empty (polling off) | |
 | `FEED_POLL_MS` | 2000 | |
+| `FEED_MAX_ATTEMPTS` | 5 | attempts before a failing feed event is parked in `feed_dead_letter` |
 | `GST_PERCENT` | 5 | applied to subtotal, rounded half-up to paise |
 | `DELIVERY_FEE_PAISE` | 3000 | |
 | `JAVA_OPTS` (container) | `-XX:MaxRAMPercentage=70` | |

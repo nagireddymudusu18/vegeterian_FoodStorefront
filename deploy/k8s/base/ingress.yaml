@@ -1,5 +1,6 @@
-﻿# Edge routing equivalent of deploy/compose/Caddyfile. Requires an ingress controller that supports
-# regex rewrite (shown for ingress-nginx); /internal/** is never exposed.
+﻿# Edge routing equivalent of deploy/prod/Caddyfile. Requires an ingress controller that supports
+# regex rewrite (shown for ingress-nginx). The paths below do not match /internal/** or /actuator/**
+# (the lookahead), so those requests never reach a service; they fall through to the storefront and 404.
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -12,10 +13,10 @@ spec:
     - host: foodapp.example.com
       http:
         paths:
-          - { path: /api/identity(/|$)(.*), pathType: ImplementationSpecific, backend: { service: { name: identity-service, port: { number: 8081 } } } }
-          - { path: /api/catalog(/|$)(.*),  pathType: ImplementationSpecific, backend: { service: { name: catalog-service,  port: { number: 8082 } } } }
-          - { path: /api/orders(/|$)(.*),   pathType: ImplementationSpecific, backend: { service: { name: order-service,    port: { number: 8083 } } } }
-          - { path: /api/payments(/|$)(.*), pathType: ImplementationSpecific, backend: { service: { name: payment-service,  port: { number: 8084 } } } }
+          - { path: "/api/identity(/|$)(?!(?:internal|actuator)(?:/|$))(.*)", pathType: ImplementationSpecific, backend: { service: { name: identity-service, port: { number: 8081 } } } }
+          - { path: "/api/catalog(/|$)(?!(?:internal|actuator)(?:/|$))(.*)",  pathType: ImplementationSpecific, backend: { service: { name: catalog-service,  port: { number: 8082 } } } }
+          - { path: "/api/orders(/|$)(?!(?:internal|actuator)(?:/|$))(.*)",   pathType: ImplementationSpecific, backend: { service: { name: order-service,    port: { number: 8083 } } } }
+          - { path: "/api/payments(/|$)(?!(?:internal|actuator)(?:/|$))(.*)", pathType: ImplementationSpecific, backend: { service: { name: payment-service,  port: { number: 8084 } } } }
 ---
 apiVersion: networking.k8s.io/v1
 kind: Ingress
