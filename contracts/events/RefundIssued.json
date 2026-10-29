@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "RefundIssued",
+  "description": "Money was refunded for a payment. order-service records it.",
+  "x-producer": "payment-service",
+  "x-consumers": ["order-service"],
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["refundId", "paymentId", "orderId", "amountPaise"],
+  "properties": {
+    "refundId": { "type": "string", "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$" },
+    "paymentId": { "type": "string", "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$" },
+    "orderId": { "type": "string", "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$" },
+    "amountPaise": { "type": "integer", "minimum": 1 }
+  },
+  "examples": [
+    {
+      "refundId": "77777777-7777-4777-8777-777777777777",
+      "paymentId": "66666666-6666-4666-8666-666666666666",
+      "orderId": "44444444-4444-4444-8444-444444444444",
+      "amountPaise": 72090
+    }
+  ]
+}

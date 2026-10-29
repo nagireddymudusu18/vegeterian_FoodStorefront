@@ -1,0 +1,138 @@
+# Production / staging stack for ONE VM. Images come from GHCR (built by .github/workflows/deploy.yml).
+#   cp .env.example .env   # fill every value
+#   docker compose -f docker-compose.prod.yml --profile with-db pull
+#   docker compose -f docker-compose.prod.yml --profile with-db up -d
+# Drop `--profile with-db` and point DB_HOST at a managed Postgres to use that instead (recommended for production).
+# Every service owns its own database and credentials; no service depends on another service.
+name: veggoeats
+
+x-service: &service
+  restart: unless-stopped
+  environment: &env
+    JAVA_OPTS: "-XX:MaxRAMPercentage=70"
+    SPRING_PROFILES_ACTIVE: "json"
+    DB_HOST: "${DB_HOST:-db}"
+    JWT_PUBLIC_KEY_PEM: "${JWT_PUBLIC_KEY_PEM}"
+  deploy:
+    resources:
+      limits: { memory: 768m }
+
+services:
+  db:
+    profiles: ["with-db"]
+    image: postgis/postgis:16-3.4
+    restart: unless-stopped
+    environment:
+      POSTGRES_PASSWORD: "${DB_SUPERUSER_PASSWORD}"
+      PW_IDENTITY: "${DB_PASSWORD_IDENTITY}"
+      PW_CATALOG: "${DB_PASSWORD_CATALOG}"
+      PW_ORDER: "${DB_PASSWORD_ORDER}"
+      PW_PAYMENT: "${DB_PASSWORD_PAYMENT}"
+      PW_FLEET: "${DB_PASSWORD_FLEET}"
+    volumes:
+      - db-data:/var/lib/postgresql/data
+      - ./init-db.sh:/docker-entrypoint-initdb.d/init-db.sh:ro
+    healthcheck: { test: ["CMD-SHELL", "pg_isready -U postgres"], interval: 5s, timeout: 3s, retries: 10 }
+
+  identity-service:
+    <<: *service
+    image: ghcr.io/${GHCR_OWNER}/veggo-identity-service:${TAG:-latest}
+    environment:
+      <<: *env
+      SERVER_PORT: 8081
+      DB_URL: jdbc:postgresql://${DB_HOST:-db}:5432/identity
+      DB_USER: identity
+      DB_PASSWORD: "${DB_PASSWORD_IDENTITY}"
+      INTERNAL_FEED_KEY: "${IDENTITY_FEED_KEY}"
+      JWT_PRIVATE_KEY_PEM: "${JWT_PRIVATE_KEY_PEM}"
+      PII_ENC_KEY: "${PII_ENC_KEY}"
+      PII_HMAC_KEY: "${PII_HMAC_KEY}"
+      # "logging" prints OTPs and email links to the log. Staging only: replace with real providers before launch.
+      SMS_PROVIDER: "${SMS_PROVIDER:-logging}"
+      EMAIL_PROVIDER: "${EMAIL_PROVIDER:-logging}"
+      APP_BASE_URL: "https://${DOMAIN}"
+      APP_MAIN_ADMIN_EMAIL: "${APP_MAIN_ADMIN_EMAIL}"
+
+  catalog-service:
+    <<: *service
+    image: ghcr.io/${GHCR_OWNER}/veggo-catalog-service:${TAG:-latest}
+    environment:
+      <<: *env
+      SERVER_PORT: 8082
+      DB_URL: jdbc:postgresql://${DB_HOST:-db}:5432/catalog
+      DB_USER: catalog
+      DB_PASSWORD: "${DB_PASSWORD_CATALOG}"
+      INTERNAL_FEED_KEY: "${CATALOG_FEED_KEY}"
+      SEED_DEMO_DATA: "${SEED_DEMO_DATA:-false}"
+
+  order-service:
+    <<: *service
+    image: ghcr.io/${GHCR_OWNER}/veggo-order-service:${TAG:-latest}
+    environment:
+      <<: *env
+      SERVER_PORT: 8083
+      DB_URL: jdbc:postgresql://${DB_HOST:-db}:5432/order
+      DB_USER: order
+      DB_PASSWORD: "${DB_PASSWORD_ORDER}"
+      INTERNAL_FEED_KEY: "${ORDER_FEED_KEY}"
+      CATALOG_FEED_URL: http://catalog-service:8082
+      CATALOG_FEED_KEY: "${CATALOG_FEED_KEY}"
+      PAYMENT_FEED_URL: http://payment-service:8084
+      PAYMENT_FEED_KEY: "${PAYMENT_FEED_KEY}"
+      FLEET_FEED_URL: http://fleet-service:8085
+      FLEET_FEED_KEY: "${FLEET_FEED_KEY}"
+      FEED_POLL_MS: 2000
+
+  payment-service:
+    <<: *service
+    image: ghcr.io/${GHCR_OWNER}/veggo-payment-service:${TAG:-latest}
+    environment:
+      <<: *env
+      SERVER_PORT: 8084
+      DB_URL: jdbc:postgresql://${DB_HOST:-db}:5432/payment
+      DB_USER: payment
+      DB_PASSWORD: "${DB_PASSWORD_PAYMENT}"
+      INTERNAL_FEED_KEY: "${PAYMENT_FEED_KEY}"
+      GATEWAY: "${GATEWAY:?Set GATEWAY in .env (razorpay, or fake with ALLOW_FAKE_GATEWAY=true on staging only)}"
+      ALLOW_FAKE_GATEWAY: "${ALLOW_FAKE_GATEWAY:-false}"
+      RAZORPAY_KEY_ID: "${RAZORPAY_KEY_ID:-}"
+      RAZORPAY_KEY_SECRET: "${RAZORPAY_KEY_SECRET:-}"
+      RAZORPAY_WEBHOOK_SECRET: "${RAZORPAY_WEBHOOK_SECRET:-}"
+
+  fleet-service:
+    <<: *service
+    image: ghcr.io/${GHCR_OWNER}/veggo-fleet-service:${TAG:-latest}
+    environment:
+      <<: *env
+      SERVER_PORT: 8085
+      DB_URL: jdbc:postgresql://${DB_HOST:-db}:5432/fleet
+      DB_USER: fleet
+      DB_PASSWORD: "${DB_PASSWORD_FLEET}"
+      INTERNAL_FEED_KEY: "${FLEET_FEED_KEY}"
+      ORDER_FEED_URL: http://order-service:8083
+      ORDER_FEED_KEY: "${ORDER_FEED_KEY}"
+      FEED_POLL_MS: 2000
+
+  storefront:
+    image: ghcr.io/${GHCR_OWNER}/veggo-storefront:${TAG:-latest}
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits: { memory: 384m }
+
+  edge:
+    image: caddy:2
+    restart: unless-stopped
+    environment:
+      DOMAIN: "${DOMAIN}"
+      ACME_EMAIL: "${ACME_EMAIL}"
+    ports: ["80:80", "443:443"]
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+
+volumes:
+  db-data:
+  caddy-data:
+  caddy-config:

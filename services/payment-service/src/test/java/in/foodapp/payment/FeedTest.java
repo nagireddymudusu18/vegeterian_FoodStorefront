@@ -23,6 +23,21 @@ class FeedTest extends AbstractIntegrationTest {
     PlatformTransactionManager txManager;
 
     @Test
+    void outboxRefusesEventsThatBreakTheirContract() {
+        TransactionTemplate tx = new TransactionTemplate(txManager);
+        UUID id = UUID.randomUUID();
+        // required fields missing
+        org.junit.jupiter.api.Assertions.assertThrows(AssertionError.class, () -> tx.executeWithoutResult(
+                s -> outbox.publish("PaymentCaptured", id, Map.of("paymentId", id.toString()))));
+        // an event type with no contract
+        org.junit.jupiter.api.Assertions.assertThrows(AssertionError.class, () -> tx.executeWithoutResult(
+                s -> outbox.publish("NoSuchEvent", id, Map.of("paymentId", id.toString()))));
+        // another service's event
+        org.junit.jupiter.api.Assertions.assertThrows(AssertionError.class, () -> tx.executeWithoutResult(
+                s -> outbox.publish("UserDeleted", id, Map.of("userId", id.toString()))));
+    }
+
+    @Test
     void feedPaginatesAndEnforcesKey() throws Exception {
         Long before = jdbc.queryForObject("SELECT COALESCE(MAX(id), 0) FROM outbox", Long.class);
         long after = before == null ? 0 : before;

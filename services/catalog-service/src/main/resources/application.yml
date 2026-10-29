@@ -33,11 +33,19 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info
+        include: health,info,prometheus
   endpoint:
     health:
       probes:
         enabled: true
+  metrics:
+    tags:
+      application: ${spring.application.name}
+
+logging:
+  pattern:
+    # the request id (see RequestIdFilter) is in every log line written while a request is served
+    level: "%5p [%X{requestId:-}]"
 
 springdoc:
   api-docs:

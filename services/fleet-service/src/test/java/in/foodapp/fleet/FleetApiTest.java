@@ -54,6 +54,25 @@ class FleetApiTest {
     JdbcTemplate jdbc;
     @Autowired
     OrderEventHandler handler;
+    @Autowired
+    in.foodapp.fleet.events.outbox.OutboxService outbox;
+    @Autowired
+    org.springframework.transaction.PlatformTransactionManager txManager;
+
+    @Test
+    void outboxRefusesEventsThatBreakTheirContract() {
+        var tx = new org.springframework.transaction.support.TransactionTemplate(txManager);
+        UUID id = UUID.randomUUID();
+        // required fields missing
+        org.junit.jupiter.api.Assertions.assertThrows(AssertionError.class, () -> tx.executeWithoutResult(
+                s -> outbox.append("DeliveryAssigned", id, Map.of("orderId", id.toString()))));
+        // an event type with no contract
+        org.junit.jupiter.api.Assertions.assertThrows(AssertionError.class, () -> tx.executeWithoutResult(
+                s -> outbox.append("NoSuchEvent", id, Map.of("orderId", id.toString()))));
+        // another service's event
+        org.junit.jupiter.api.Assertions.assertThrows(AssertionError.class, () -> tx.executeWithoutResult(
+                s -> outbox.append("UserDeleted", id, Map.of("userId", id.toString()))));
+    }
 
     private static JwtRequestPostProcessor as(UUID user, String role) {
         return SecurityMockMvcRequestPostProcessors.jwt()

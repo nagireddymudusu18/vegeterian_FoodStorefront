@@ -31,6 +31,12 @@ role; the client must refresh its token to see it.
 ## Known limitation
 No unassign/release: a partner who abandons an `ASSIGNED` job needs an admin to handle it manually for now.
 
+## Failing feed events
+Same rules as order-service (see `contracts/CONVENTIONS.md`, migration V2): a batch that fails is re-applied one event
+at a time; a failing event is retried (`FEED_MAX_ATTEMPTS`, default 5) and then, like a malformed one at once, parked in
+`feed_dead_letter` so the feed keeps moving. `ADMIN`: `GET /fleet/admin/dead-letters`,
+`POST /fleet/admin/dead-letters/{id}/retry` and `/discard`.
+
 ## Config
-`ORDER_FEED_URL`, `ORDER_FEED_KEY` (order-service feed), `INTERNAL_FEED_KEY` (this service's feed), plus the common
-variables. Tests: `mvn verify` (use `TEST_DB_URL` to run without Docker).
+`ORDER_FEED_URL`, `ORDER_FEED_KEY` (order-service feed), `INTERNAL_FEED_KEY` (this service's feed), `FEED_MAX_ATTEMPTS`,
+plus the common variables. Tests: `mvn verify` (use `TEST_DB_URL` to run without Docker).

@@ -41,8 +41,10 @@ class FeatureFlagIT {
         registry.add("spring.datasource.username", DB::user);
         registry.add("spring.datasource.password", DB::password);
         registry.add("app.internal-feed-key", () -> "it-feed-key");
-        registry.add("app.admin-emails", () -> ADMIN_EMAIL + ",partner.admin@example.com,owners.admin@example.com");
+        registry.add("app.main-admin-email", () -> ADMIN_EMAIL);
     }
+
+    private static boolean adminRegistered;
 
     static class CapturingEmailSender implements EmailSender {
         final Map<String, String> lastLink = new ConcurrentHashMap<>();
@@ -93,9 +95,20 @@ class FeatureFlagIT {
         return "Bearer " + tokens.get("accessToken").asText();
     }
 
+    /** The main admin signs in through the admin sign-in (email and password). */
+    private synchronized String adminToken() throws Exception {
+        if (!adminRegistered) {
+            signUpAndVerify(ADMIN_EMAIL);
+            adminRegistered = true;
+        }
+        JsonNode r = mapper.readTree(postJson("/auth/admin/login", Map.of("email", ADMIN_EMAIL,
+                "password", "Sup3rSecret")).andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
+        return "Bearer " + r.get("tokens").get("accessToken").asText();
+    }
+
     @Test
     void adminGrantsRestaurantRoleByEmail() throws Exception {
-        String admin = signUpAndVerify("owners.admin@example.com");
+        String admin = adminToken();
         String owner = signUpAndVerify("owner.one@example.com");
         mvc.perform(post("/admin/restaurant-owners").header("Authorization", owner)
                 .contentType(MediaType.APPLICATION_JSON).content("{\"email\":\"owner.one@example.com\"}"))
@@ -130,7 +143,7 @@ class FeatureFlagIT {
 
     @Test
     void adminTogglesFlagsAndIdentityEnforcesTheirs() throws Exception {
-        String admin = signUpAndVerify(ADMIN_EMAIL);
+        String admin = adminToken();
         mvc.perform(get("/me").header("Authorization", admin))
                 .andExpect(jsonPath("$.roles[?(@ == 'ADMIN')]").isNotEmpty());
         mvc.perform(get("/admin/flags").header("Authorization", admin)).andExpect(status().isOk())
@@ -165,7 +178,7 @@ class FeatureFlagIT {
 
     @Test
     void partnerSignUpNeedsTheDeliveryFlagAndAVerifiedPhone() throws Exception {
-        String admin = signUpAndVerify("partner.admin@example.com");
+        String admin = adminToken();
         String user = signUpAndVerify("partner.user@example.com");
         mvc.perform(post("/me/partner")).andExpect(status().isUnauthorized());
         mvc.perform(post("/me/partner").header("Authorization", user)).andExpect(status().isServiceUnavailable());

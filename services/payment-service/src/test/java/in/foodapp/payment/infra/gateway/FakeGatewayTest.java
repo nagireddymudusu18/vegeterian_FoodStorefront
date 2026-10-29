@@ -5,10 +5,18 @@ import org.junit.jupiter.api.Test;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class FakeGatewayTest {
 
-    private final FakeGateway gateway = new FakeGateway("secret");
+    private final FakeGateway gateway = new FakeGateway("secret", true);
+
+    @Test
+    void refusesToStartUnlessExplicitlyAllowed() {
+        assertThatThrownBy(() -> new FakeGateway("secret", false))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("ALLOW_FAKE_GATEWAY");
+    }
 
     private PaymentRequest req(long amount) {
         return new PaymentRequest(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), amount, "k");

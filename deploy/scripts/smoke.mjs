@@ -134,9 +134,31 @@ try {
   const l = readFileSync(logFile, "utf8").split(/\r?\n/).filter((x) => x.includes(`VERIFY_EMAIL to ${adminEmail}`));
   await call(`${ID}/auth/email/verify`, { method: "POST", body: { token: l.at(-1).match(/token=([\w-]+)/)[1], password: adminPass } });
 } catch { /* already registered by an earlier run */ }
-adminTokens = await call(`${ID}/auth/login`, { method: "POST", body: { email: adminEmail, password: adminPass } });
+if (await status(() => call(`${ID}/auth/login`, { method: "POST", body: { email: adminEmail, password: adminPass } })) !== 403)
+  throw new Error("the admin must not be able to use the ordinary sign-in");
+adminTokens = (await call(`${ID}/auth/admin/login`, { method: "POST", body: { email: adminEmail, password: adminPass } })).tokens;
 const adminToken = adminTokens.accessToken;
 await call(`${ID}/admin/flags/delivery_module`, { method: "PUT", token: adminToken, body: { enabled: true } });
+
+step("admin team: the main admin invites a second admin, who accepts and signs in; then the main admin removes them");
+const second = `smoke2admin${Date.now()}@example.com`;
+const logLink = (kind, to) => readFileSync(logFile, "utf8").split(/\r?\n/).filter((x) => x.includes(`${kind} to ${to}`)).at(-1)?.match(/token=([\w-]+)/)?.[1];
+await call(`${ID}/auth/register`, { method: "POST", body: { name: "Second Admin", email: second, password: adminPass, consent } });
+await sleep(300);
+await call(`${ID}/auth/email/verify`, { method: "POST", body: { token: logLink("VERIFY_EMAIL", second), password: adminPass } });
+await call(`${ID}/admin/team/invites`, { method: "POST", token: adminToken, body: { email: second } });
+await sleep(300);
+const inviteToken = logLink("ADMIN_INVITE", second);
+if (!inviteToken) throw new Error("admin invite link not found in identity-service.log");
+await call(`${ID}/auth/admin/invite/accept`, { method: "POST", body: { token: inviteToken, email: second, password: adminPass } });
+const secondToken = (await call(`${ID}/auth/admin/login`, { method: "POST", body: { email: second, password: adminPass } })).tokens.accessToken;
+await call(`${ID}/admin/flags`, { token: secondToken });
+if (await status(() => call(`${ID}/admin/team`, { token: secondToken })) !== 403) throw new Error("a second admin must not manage the team");
+const member = (await call(`${ID}/admin/team`, { token: adminToken })).members.find((m) => !m.main);
+if (!member) throw new Error("the second admin is missing from the team list");
+await call(`${ID}/admin/team/members/${member.userId}`, { method: "DELETE", token: adminToken });
+if (await status(() => call(`${ID}/auth/admin/login`, { method: "POST", body: { email: second, password: adminPass } })) !== 403)
+  throw new Error("a removed admin can still use the admin sign-in");
 
 step("fleet: a phone user becomes a partner and goes online");
 const riderPhone = "+91" + String(9000000000 + Math.floor(Math.random() * 99999999));

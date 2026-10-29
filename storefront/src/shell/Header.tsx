@@ -16,7 +16,7 @@ export function Header() {
           <span aria-hidden="true" className="flex h-8 w-8 items-center justify-center rounded-xl bg-green-600 text-white">
             🌿
           </span>
-          FoodApp
+          Veggo Eats
         </Link>
         <nav aria-label="Main" className="ml-auto flex items-center gap-1 text-sm sm:gap-3">
           <Link href="/track" className="rounded-lg px-2 py-2 hover:bg-stone-100">

@@ -1,5 +1,7 @@
 # Documentation
 
+- **[PROJECT_HANDOVER.md](PROJECT_HANDOVER.md): start here.** What was built, how it runs locally and on GCP, status and next steps
+
 - [getting-started.md](getting-started.md): prerequisites, running the stack, tests
 - [architecture.md](architecture.md): independence model, event feeds, auth, order/payment flow, code layout
 - Service guides: [identity](services/identity-service.md), [catalog](services/catalog-service.md),

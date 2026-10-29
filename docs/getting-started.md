@@ -88,7 +88,7 @@ Without make: `mvn -B test` in each `services/<name>` and `npm test` / `npm run 
 
 The storefront has three areas: customer (`/`, `/cart`, `/orders`, ... in the `(customer)` route group, URLs unchanged), admin (`/admin`) and delivery partner (`/partner`, hidden until the `delivery_module` flag is on).
 
-**Admin access.** Set `APP_ADMIN_EMAILS` (comma separated) on identity-service; the local stack uses `admin@foodapp.local`. Register that email, verify it via the link in `deploy/local/identity-service.log`, log in and open `/admin/flags`. `ADMIN` is granted only to verified emails.
+**Admin access.** Administrators sign in with email and password only, at `/admin/login`. Phone OTP and the ordinary `/login` refuse admin accounts. Set `APP_MAIN_ADMIN_EMAIL` on identity-service (the local stack uses `admin@foodapp.local`): register that email, verify it via the link in `deploy/local/identity-service.log`, then sign in at `/admin/login`. That one account is the main admin (roles `ADMIN` and `SUPER_ADMIN`). Only it can open `/admin/team` to invite other admins by email: the invitee creates and verifies an account with that address, opens the invite link (`/admin/accept?token=...`, in the log locally) and confirms with their password. The main admin can revoke invites and remove admins; the main admin itself cannot be removed. Turn on the `admin_login_code` flag to also require a 6-digit emailed code at admin sign-in (off by default; locally the code is in the log).
 
 | Flag | Default | Enforced |
 |------|---------|----------|
@@ -98,5 +98,6 @@ The storefront has three areas: customer (`/`, `/cart`, `/orders`, ... in the `(
 | `order_tracking` | on | storefront only |
 | `live_order_updates` | on | storefront only |
 | `delivery_module` | off | storefront only |
+| `admin_login_code` | off | identity-service (emailed code at admin sign-in) |
 
 Public `GET /flags`; admin `GET /admin/flags`, `PUT /admin/flags/{key}` with `{"enabled":true}`. Clients read flags on load, so changes apply on next page load. Client-only flags are UI gates because order-service stays independent of identity.

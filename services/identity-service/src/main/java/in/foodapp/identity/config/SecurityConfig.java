@@ -66,9 +66,11 @@ public class SecurityConfig {
                 .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(a -> a
                         .requestMatchers("/auth/**", "/actuator/health", "/actuator/health/**",
+                                "/actuator/prometheus",
                                 "/.well-known/**", "/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html",
                                 "/internal/**", "/error").permitAll()
                         .requestMatchers(HttpMethod.GET, "/flags").permitAll()
+                        .requestMatchers("/admin/team/**").hasRole("SUPER_ADMIN")
                         .requestMatchers("/admin/**").hasRole("ADMIN")
                         .anyRequest().authenticated())
                 .oauth2ResourceServer(o -> o

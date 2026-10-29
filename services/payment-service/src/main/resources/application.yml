@@ -36,11 +36,19 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info
+        include: health,info,prometheus
   endpoint:
     health:
       probes:
         enabled: true
+  metrics:
+    tags:
+      application: ${spring.application.name}
+
+logging:
+  pattern:
+    # the request id (see RequestIdFilter) is in every log line written while a request is served
+    level: "%5p [%X{requestId:-}]"
 
 springdoc:
   api-docs:
@@ -54,6 +62,8 @@ app:
     # PEM text; literal "\n" escapes are accepted. Empty default => startup fails fast in SecurityConfig.
     public-key-pem: ${JWT_PUBLIC_KEY_PEM:}
   gateway: ${GATEWAY:fake}
+  # The fake gateway refuses to start unless this is true (local development and staging only).
+  allow-fake-gateway: ${ALLOW_FAKE_GATEWAY:false}
   razorpay:
     key-id: ${RAZORPAY_KEY_ID:}
     key-secret: ${RAZORPAY_KEY_SECRET:}

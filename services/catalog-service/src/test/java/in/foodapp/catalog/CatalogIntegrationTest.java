@@ -46,6 +46,25 @@ class CatalogIntegrationTest {
     MockMvc mvc;
     @Autowired
     ObjectMapper mapper;
+    @Autowired
+    in.foodapp.catalog.events.OutboxService outbox;
+    @Autowired
+    org.springframework.transaction.PlatformTransactionManager txManager;
+
+    @Test
+    void outboxRefusesEventsThatBreakTheirContract() {
+        var tx = new org.springframework.transaction.support.TransactionTemplate(txManager);
+        java.util.UUID id = java.util.UUID.randomUUID();
+        // required fields missing
+        org.junit.jupiter.api.Assertions.assertThrows(AssertionError.class, () -> tx.executeWithoutResult(
+                s -> outbox.publish("MenuItemUpserted", id, java.util.Map.of("itemId", id.toString()))));
+        // an event type with no contract
+        org.junit.jupiter.api.Assertions.assertThrows(AssertionError.class, () -> tx.executeWithoutResult(
+                s -> outbox.publish("NoSuchEvent", id, java.util.Map.of("itemId", id.toString()))));
+        // another service's event
+        org.junit.jupiter.api.Assertions.assertThrows(AssertionError.class, () -> tx.executeWithoutResult(
+                s -> outbox.publish("UserDeleted", id, java.util.Map.of("userId", id.toString()))));
+    }
 
     // ------------------------------------------------------------------ geofence
 

@@ -7,7 +7,8 @@
 	header {
 		Access-Control-Allow-Origin "{$CORS_ALLOW_ORIGIN:http://localhost:3000}"
 		Access-Control-Allow-Methods "GET, POST, PUT, PATCH, DELETE, OPTIONS"
-		Access-Control-Allow-Headers "Authorization, Content-Type, Idempotency-Key"
+		Access-Control-Allow-Headers "Authorization, Content-Type, Idempotency-Key, X-Request-Id"
+		Access-Control-Expose-Headers "X-Request-Id"
 		Vary Origin
 	}
 	respond @cors_preflight 204
@@ -15,6 +16,10 @@
 
 :8080 {
 	import cors_dev
+
+	# Every request gets an id (kept if the caller sent one); services log it and echo it in X-Request-Id.
+	@noreqid not header X-Request-Id *
+	request_header @noreqid X-Request-Id {http.request.uuid}
 
 	handle_path /api/identity/* {
 		reverse_proxy identity-service:8081

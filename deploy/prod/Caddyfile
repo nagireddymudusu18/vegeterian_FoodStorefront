@@ -1,0 +1,54 @@
+{
+	email {$ACME_EMAIL}
+}
+
+# One domain: the storefront at / and every API under /api/<service>/ (same origin, so no CORS).
+{$DOMAIN}, www.{$DOMAIN} {
+	encode zstd gzip
+
+	@www host www.{$DOMAIN}
+	redir @www https://{$DOMAIN}{uri} permanent
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		-Server
+	}
+
+	# Every request gets an id (kept if the caller sent one); services log it and echo it in X-Request-Id.
+	@noreqid not header X-Request-Id *
+	request_header @noreqid X-Request-Id {http.request.uuid}
+
+	# Internal feeds and actuator are never exposed.
+	@internal path /api/*/internal/* /api/*/actuator/* /internal/* /actuator/*
+	handle @internal {
+		respond 404
+	}
+	handle_path /api/identity/* {
+		reverse_proxy identity-service:8081
+	}
+	handle_path /api/catalog/* {
+		reverse_proxy catalog-service:8082
+	}
+	handle_path /api/orders/* {
+		reverse_proxy order-service:8083 {
+			flush_interval -1
+		}
+	}
+	handle_path /api/payments/* {
+		reverse_proxy payment-service:8084
+	}
+	handle_path /api/fleet/* {
+		reverse_proxy fleet-service:8085 {
+			flush_interval -1
+		}
+	}
+	# Razorpay webhooks reach payment-service only through this explicit path.
+	handle /webhooks/razorpay {
+		reverse_proxy payment-service:8084
+	}
+	handle {
+		reverse_proxy storefront:3000
+	}
+}

@@ -26,7 +26,9 @@ spec:
             - { name: RAZORPAY_KEY_ID, valueFrom: { secretKeyRef: { name: foodapp-secrets, key: RAZORPAY_KEY_ID } } }
             - { name: RAZORPAY_KEY_SECRET, valueFrom: { secretKeyRef: { name: foodapp-secrets, key: RAZORPAY_KEY_SECRET } } }
             - { name: RAZORPAY_WEBHOOK_SECRET, valueFrom: { secretKeyRef: { name: foodapp-secrets, key: RAZORPAY_WEBHOOK_SECRET } } }
-            - { name: GATEWAY, value: fake }
+            - { name: GATEWAY, value: razorpay }
+            # The fake gateway marks every payment as paid. It refuses to start unless this is "true"; staging only.
+            - { name: ALLOW_FAKE_GATEWAY, value: "false" }
           readinessProbe:
             httpGet: { path: /actuator/health, port: 8084 }
             initialDelaySeconds: 20

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, type ReactNode } from "react";
-import { errorMessage } from "@/lib/api";
+import { errorMessage, errorReference } from "@/lib/api";
 
 export function Spinner({ label = "Loading" }: { label?: string }) {
   return (
@@ -13,9 +13,11 @@ export function Spinner({ label = "Loading" }: { label?: string }) {
 }
 
 export function ErrorBox({ error, onRetry }: { error: unknown; onRetry?: () => void }) {
+  const reference = errorReference(error);
   return (
     <div role="alert" className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-900">
       <p className="font-semibold">{errorMessage(error)}</p>
+      {reference && <p className="mt-1 text-xs text-red-800">Reference: {reference} (quote this if you contact support)</p>}
       {onRetry && (
         <button
           type="button"

@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ApiError, identity } from "@/lib/api";
-import { OtpLogin, passwordProblem, useAuth, validateEmail } from "@/features/auth";
+import { OtpLogin, passwordProblem, safeInternalPath, useAuth, validateEmail } from "@/features/auth";
 import { ErrorBox } from "@/components/ui";
 import { useFlag } from "@/features/flags";
 
@@ -21,8 +21,7 @@ const BUTTON =
   "w-full rounded-xl bg-gradient-to-r from-green-600 to-emerald-600 px-4 py-3 font-semibold text-white shadow-sm transition hover:from-green-700 hover:to-emerald-700 disabled:opacity-60";
 
 function safeNext(): string {
-  const n = new URLSearchParams(window.location.search).get("next");
-  return n && n.startsWith("/") && !n.startsWith("//") ? n : "/";
+  return safeInternalPath(new URLSearchParams(window.location.search).get("next"));
 }
 
 function EmailForm({ register, onDone }: { register: boolean; onDone: () => void }) {
@@ -171,7 +170,7 @@ export default function LoginPage() {
   return (
     <div className="mx-auto max-w-md space-y-5">
       <div className="text-center">
-        <h1 className="text-2xl font-bold">Welcome to FoodApp</h1>
+        <h1 className="text-2xl font-bold">Welcome to Veggo Eats</h1>
         <p className="mt-1 text-sm text-stone-600">Sign in or create an account to order. No password needed with OTP.</p>
       </div>
 

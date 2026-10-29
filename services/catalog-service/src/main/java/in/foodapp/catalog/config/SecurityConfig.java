@@ -43,7 +43,7 @@ public class SecurityConfig {
                 .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/internal/**", "/actuator/health", "/actuator/health/**",
-                                "/actuator/info", "/v3/api-docs", "/v3/api-docs/**",
+                                "/actuator/info", "/actuator/prometheus", "/v3/api-docs", "/v3/api-docs/**",
                                 "/swagger-ui.html", "/swagger-ui/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/restaurants", "/restaurants/**").permitAll()
                         .requestMatchers(HttpMethod.POST, "/restaurants", "/restaurants/*/items")

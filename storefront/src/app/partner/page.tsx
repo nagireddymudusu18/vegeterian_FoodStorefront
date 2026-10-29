@@ -67,7 +67,7 @@ function Enroll({ onDone }: { onDone: () => Promise<void> }) {
   }
   return (
     <Card>
-      <h1 className="text-xl font-bold">Deliver with FoodApp</h1>
+      <h1 className="text-xl font-bold">Deliver with Veggo Eats</h1>
       <p className="text-sm text-stone-700">
         Your account needs a verified phone number. Sign in with your phone and OTP, then join as a delivery partner.
       </p>

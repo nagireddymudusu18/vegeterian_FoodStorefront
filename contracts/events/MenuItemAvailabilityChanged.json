@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "MenuItemAvailabilityChanged",
+  "description": "The \"86\" toggle: an item was marked available or sold out.",
+  "x-producer": "catalog-service",
+  "x-consumers": ["order-service"],
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["itemId", "restaurantId", "available"],
+  "properties": {
+    "itemId": { "type": "string", "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$" },
+    "restaurantId": { "type": "string", "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$" },
+    "available": { "type": "boolean" }
+  },
+  "examples": [
+    {
+      "itemId": "33333333-3333-4333-8333-333333333333",
+      "restaurantId": "11111111-1111-4111-8111-111111111111",
+      "available": false
+    }
+  ]
+}

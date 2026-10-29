@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "DeliveryAssigned",
+  "description": "A delivery partner took a job. order-service moves PREPARING to RIDER_ASSIGNED.",
+  "x-producer": "fleet-service",
+  "x-consumers": ["order-service"],
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["orderId", "partnerId", "assignedBy"],
+  "properties": {
+    "orderId": { "type": "string", "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$" },
+    "partnerId": { "description": "The partner's user id (the JWT sub).", "type": "string", "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$" },
+    "assignedBy": { "type": "string", "enum": ["PARTNER", "ADMIN"] }
+  },
+  "examples": [
+    {
+      "orderId": "44444444-4444-4444-8444-444444444444",
+      "partnerId": "88888888-8888-4888-8888-888888888888",
+      "assignedBy": "PARTNER"
+    }
+  ]
+}

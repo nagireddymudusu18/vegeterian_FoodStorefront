@@ -65,13 +65,13 @@ switch ($Action) {
         $e = Read-Env
         $extra = @{
             identity = @{ JWT_PRIVATE_KEY_PEM = $e.JWT_PRIVATE_KEY_PEM; PII_ENC_KEY = $e.PII_ENC_KEY; PII_HMAC_KEY = $e.PII_HMAC_KEY
-                INTERNAL_FEED_KEY = $e.IDENTITY_FEED_KEY; SMS_PROVIDER = 'logging'; EMAIL_PROVIDER = 'logging'; APP_BASE_URL = 'http://localhost:8080'; APP_ADMIN_EMAILS = 'admin@foodapp.local' }
+                INTERNAL_FEED_KEY = $e.IDENTITY_FEED_KEY; SMS_PROVIDER = 'logging'; EMAIL_PROVIDER = 'logging'; APP_BASE_URL = 'http://localhost:8080'; APP_MAIN_ADMIN_EMAIL = 'admin@foodapp.local' }
             catalog  = @{ INTERNAL_FEED_KEY = $e.CATALOG_FEED_KEY; SEED_DEMO_DATA = 'true' }
             order    = @{ INTERNAL_FEED_KEY = $e.ORDER_FEED_KEY; CATALOG_FEED_URL = 'http://localhost:8082'
                 CATALOG_FEED_KEY = $e.CATALOG_FEED_KEY; PAYMENT_FEED_URL = 'http://localhost:8084'
                 PAYMENT_FEED_KEY = $e.PAYMENT_FEED_KEY; FLEET_FEED_URL = 'http://localhost:8085'
                 FLEET_FEED_KEY = $e.FLEET_FEED_KEY; FEED_POLL_MS = '2000' }
-            payment  = @{ INTERNAL_FEED_KEY = $e.PAYMENT_FEED_KEY; GATEWAY = 'fake' }
+            payment  = @{ INTERNAL_FEED_KEY = $e.PAYMENT_FEED_KEY; GATEWAY = 'fake'; ALLOW_FAKE_GATEWAY = 'true' }
             fleet    = @{ INTERNAL_FEED_KEY = $e.FLEET_FEED_KEY; ORDER_FEED_URL = 'http://localhost:8083'
                 ORDER_FEED_KEY = $e.ORDER_FEED_KEY; FEED_POLL_MS = '2000' }
         }

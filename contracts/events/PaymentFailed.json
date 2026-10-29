@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "PaymentFailed",
+  "description": "A payment attempt failed. order-service moves the order to PAYMENT_FAILED.",
+  "x-producer": "payment-service",
+  "x-consumers": ["order-service"],
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["paymentId", "orderId", "reason"],
+  "properties": {
+    "paymentId": { "type": "string", "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$" },
+    "orderId": { "type": "string", "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$" },
+    "reason": { "type": "string", "minLength": 1 }
+  },
+  "examples": [
+    {
+      "paymentId": "66666666-6666-4666-8666-666666666666",
+      "orderId": "44444444-4444-4444-8444-444444444444",
+      "reason": "Fake gateway: simulated decline (amount ends in 13)"
+    }
+  ]
+}
