@@ -3,6 +3,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { useRequireAuth } from "@/features/auth";
+import { NotificationBell } from "@/features/notifications";
 import { useFlag } from "@/features/flags";
 import { Spinner } from "@/components/ui";
 
@@ -20,9 +21,12 @@ export default function PartnerLayout({ children }: { children: ReactNode }) {
           <Link href="/partner" className="text-lg font-extrabold tracking-tight">
             Veggo Eats Partner
           </Link>
-          <button type="button" onClick={logout} className="ml-auto rounded-lg px-3 py-2 text-sm hover:bg-emerald-700">
-            Sign out
-          </button>
+          <div className="ml-auto flex items-center gap-1">
+            <NotificationBell tone="dark" />
+            <button type="button" onClick={logout} className="rounded-lg px-3 py-2 text-sm hover:bg-emerald-700">
+              Sign out
+            </button>
+          </div>
         </div>
       </header>
       <main id="main" className="mx-auto w-full max-w-3xl px-4 py-6">

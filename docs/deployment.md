@@ -30,7 +30,7 @@ Files: `deploy/prod/` (compose, Caddyfile, `.env.example`, `init-db.sh`) and `.g
 
 ## 5. Database
 - Quick start: bundled Postgres (`DB_HOST=db`, the workflow adds `--profile with-db`). It creates one role and database per service and enables PostGIS for catalog.
-- Production: a managed Postgres with PostGIS and point-in-time backups. Create the same five roles and databases, enable `postgis` in `catalog`, then set `DB_HOST`.
+- Production: a managed Postgres with PostGIS and point-in-time backups. Create the same six roles and databases, enable `postgis` in `catalog`, then set `DB_HOST`.
 - Google Cloud (Mumbai): a sandbox Cloud SQL instance already exists; see [deploy/gcp/README.md](../deploy/gcp/README.md). Create a separate production instance the same way, with backups on and no shared-core tier.
 - With the bundled database, schedule backups, for example a nightly cron: `docker compose exec -T db pg_dumpall -U postgres | gzip > /backups/$(date +%F).sql.gz`, copied off the VM. **Test a restore** before launch.
 

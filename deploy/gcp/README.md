@@ -10,7 +10,7 @@ setup. Billing is on a Google account with free credits, and a monthly budget al
 | Project | `veggo-eats-6110` |
 | Region | `asia-south1` (Mumbai) |
 | Sandbox DB | Cloud SQL `veggo-sandbox-db`: PostgreSQL 16, `db-f1-micro`, single zone, 10 GB HDD, 3 nightly backups |
-| Databases and users | `identity`, `catalog`, `order`, `payment`, `fleet`, each owned by a user of the same name. `postgis` is enabled in `catalog` |
+| Databases and users | `identity`, `catalog`, `order`, `payment`, `fleet`, each owned by a user of the same name (add `notification` before the next deploy: create the user and database, put its password in `gcp.env` as `PW_NOTIFICATION`). `postgis` is enabled in `catalog` |
 | Credentials | `deploy/local/gcp.env`, which is git-ignored. Never commit it or paste it into chat |
 
 The instance has a public IP but **no authorized networks**, so nothing can connect to it directly.

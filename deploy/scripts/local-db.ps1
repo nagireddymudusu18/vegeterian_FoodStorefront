@@ -12,7 +12,7 @@ $pgHome = if ($env:PGHOME) { $env:PGHOME } else { Join-Path $env:USERPROFILE 'to
 $data = if ($env:PGDATA_DIR) { $env:PGDATA_DIR } else { Join-Path $env:USERPROFILE 'tools\pgdata' }
 $port = if ($env:PGPORT) { $env:PGPORT } else { '5432' }
 $bin = Join-Path $pgHome 'bin'
-$databases = 'identity', 'catalog', 'order', 'payment', 'fleet'
+$databases = 'identity', 'catalog', 'order', 'payment', 'fleet', 'notification'
 
 function Psql([string]$db, [string]$sql) {
     & "$bin\psql.exe" -h 127.0.0.1 -p $port -U postgres -d $db -v ON_ERROR_STOP=1 -q -t -A -c $sql

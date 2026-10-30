@@ -3,7 +3,7 @@
   "title": "DeliveryAssigned",
   "description": "A delivery partner took a job. order-service moves PREPARING to RIDER_ASSIGNED.",
   "x-producer": "fleet-service",
-  "x-consumers": ["order-service"],
+  "x-consumers": ["order-service", "notification-service"],
   "type": "object",
   "additionalProperties": false,
   "required": ["orderId", "partnerId", "assignedBy"],

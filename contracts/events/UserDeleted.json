@@ -1,9 +1,9 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "UserDeleted",
-  "description": "An account was erased (DPDP). No service consumes it yet.",
+  "description": "An account was erased (DPDP). notification-service deletes the user's contacts and notifications.",
   "x-producer": "identity-service",
-  "x-consumers": [],
+  "x-consumers": ["notification-service"],
   "type": "object",
   "additionalProperties": false,
   "required": ["userId"],

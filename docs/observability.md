@@ -26,7 +26,7 @@ pool), tagged `application=<service>`. The endpoint is open inside the private n
 ingress block `/actuator`, and the production compose file does not publish service ports. Scrape it from a collector on
 the same network.
 
-Feed consumers (order-service, fleet-service) add:
+Feed consumers (order-service, fleet-service, notification-service) add:
 
 | Metric | Meaning |
 |---|---|
@@ -34,8 +34,10 @@ Feed consumers (order-service, fleet-service) add:
 | `feed_dead_letters_open` | events parked in `feed_dead_letter` and not yet resolved |
 
 **Alert when `feed_dead_letters_open > 0`** (an admin must retry or discard: `GET /admin/dead-letters` on
-order-service, `GET /fleet/admin/dead-letters` on fleet-service), and when `feed_events_total{outcome="failed"}` keeps
-growing. Parking is also logged at ERROR.
+order-service, `GET /fleet/admin/dead-letters` on fleet-service, `GET /notifications/admin/dead-letters` on
+notification-service), and when `feed_events_total{outcome="failed"}` keeps
+growing. Parking is also logged at ERROR. notification-service also counts sends in
+`notification_delivery_total{channel,outcome}` (`sent`, `failed`, `skipped`): alert when `failed` keeps growing.
 
 Suggested first alerts: a service's `up` is 0, HTTP 5xx rate above 1% for 5 minutes, `feed_dead_letters_open > 0`.
 

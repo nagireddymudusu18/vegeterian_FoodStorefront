@@ -11,6 +11,7 @@ const routes = {
   "/api/orders/": 8083,
   "/api/payments/": 8084,
   "/api/fleet/": 8085,
+  "/api/notifications/": 8086,
 };
 const STOREFRONT = 3000;
 

@@ -40,6 +40,9 @@
 			flush_interval -1
 		}
 	}
+	handle_path /api/notifications/* {
+		reverse_proxy 127.0.0.1:8086
+	}
 	handle /webhooks/razorpay {
 		reverse_proxy 127.0.0.1:8084
 	}

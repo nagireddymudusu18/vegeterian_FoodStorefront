@@ -1,6 +1,6 @@
 #!/bin/bash
 # Starts one Spring Boot service with only the environment it needs (secrets are not shared between services).
-# Usage: run-service.sh identity|catalog|order|payment|fleet   (run by systemd as veggo@<name>.service)
+# Usage: run-service.sh identity|catalog|order|payment|fleet|notification   (run by systemd as veggo@<name>.service)
 set -euo pipefail
 svc="$1"
 . /opt/veggo/app.env
@@ -13,6 +13,7 @@ case "$svc" in
     port=8081
     extra=($(db identity "$DB_PASSWORD_IDENTITY") "INTERNAL_FEED_KEY=$IDENTITY_FEED_KEY"
       "JWT_PRIVATE_KEY_PEM=$JWT_PRIVATE_KEY_PEM" "PII_ENC_KEY=$PII_ENC_KEY" "PII_HMAC_KEY=$PII_HMAC_KEY"
+      "CONTACT_EVENT_KEY=$CONTACT_EVENT_KEY"
       "SMS_PROVIDER=$SMS_PROVIDER" "EMAIL_PROVIDER=$EMAIL_PROVIDER" "APP_BASE_URL=$APP_BASE_URL"
       "APP_MAIN_ADMIN_EMAIL=$APP_MAIN_ADMIN_EMAIL")
     ;;
@@ -36,6 +37,16 @@ case "$svc" in
     port=8085
     extra=($(db fleet "$DB_PASSWORD_FLEET") "INTERNAL_FEED_KEY=$FLEET_FEED_KEY"
       "ORDER_FEED_URL=http://127.0.0.1:8083" "ORDER_FEED_KEY=$ORDER_FEED_KEY" "FEED_POLL_MS=2000")
+    ;;
+  notification)
+    port=8086
+    extra=($(db notification "$DB_PASSWORD_NOTIFICATION") "CONTACT_EVENT_KEY=$CONTACT_EVENT_KEY"
+      "SMS_PROVIDER=$SMS_PROVIDER" "EMAIL_PROVIDER=$EMAIL_PROVIDER"
+      "IDENTITY_FEED_URL=http://127.0.0.1:8081" "IDENTITY_FEED_KEY=$IDENTITY_FEED_KEY"
+      "CATALOG_FEED_URL=http://127.0.0.1:8082" "CATALOG_FEED_KEY=$CATALOG_FEED_KEY"
+      "ORDER_FEED_URL=http://127.0.0.1:8083" "ORDER_FEED_KEY=$ORDER_FEED_KEY"
+      "PAYMENT_FEED_URL=http://127.0.0.1:8084" "PAYMENT_FEED_KEY=$PAYMENT_FEED_KEY"
+      "FLEET_FEED_URL=http://127.0.0.1:8085" "FLEET_FEED_KEY=$FLEET_FEED_KEY" "FEED_POLL_MS=2000")
     ;;
   *) echo "unknown service: $svc" >&2; exit 2 ;;
 esac

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useAuth } from "@/features/auth";
 import { useCart } from "@/features/cart";
+import { NotificationBell } from "@/features/notifications";
 import { identity } from "@/lib/api";
 
 export function Header() {
@@ -43,6 +44,7 @@ export function Header() {
               </span>
             )}
           </Link>
+          <NotificationBell />
           {status === "loading" ? (
             <span className="px-2 text-stone-400" aria-live="polite">
               ...

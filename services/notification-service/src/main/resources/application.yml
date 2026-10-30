@@ -1,0 +1,72 @@
+server:
+  port: ${SERVER_PORT:8086}
+  forward-headers-strategy: native
+
+spring:
+  application:
+    name: notification-service
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/notification}
+    username: ${DB_USER:notification}
+    password: ${DB_PASSWORD:notification}
+    # No standing connections: one is opened when an action needs the database and closed after it sits idle.
+    hikari:
+      minimum-idle: ${DB_POOL_MIN_IDLE:0}
+      maximum-pool-size: ${DB_POOL_MAX:10}
+      idle-timeout: ${DB_POOL_IDLE_MS:10000}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: none
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+  jackson:
+    default-property-inclusion: non_null
+    serialization:
+      write-dates-as-timestamps: false
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+  metrics:
+    tags:
+      application: ${spring.application.name}
+
+logging:
+  pattern:
+    # the request id (see RequestIdFilter) is in every log line written while a request is served
+    level: "%5p [%X{requestId:-}]"
+
+app:
+  jwt-public-key-pem: ${JWT_PUBLIC_KEY_PEM:}
+  contact-event-key: ${CONTACT_EVENT_KEY:}
+  sms-provider: ${SMS_PROVIDER:logging}
+  email-provider: ${EMAIL_PROVIDER:logging}
+  messaging:
+    # Events older than this still update contacts and order data but raise no notification, so the first start
+    # (or a long outage) does not replay a backlog of stale messages to customers.
+    max-event-age-minutes: ${NOTIFY_MAX_EVENT_AGE_MINUTES:60}
+    # How long a broadcast (for example a new delivery job shown to all partners) stays in their inbox.
+    broadcast-ttl-minutes: ${NOTIFY_BROADCAST_TTL_MINUTES:120}
+    dispatch-max-attempts: ${NOTIFY_DISPATCH_MAX_ATTEMPTS:5}
+  feed:
+    batch-size: 100
+    # An event that keeps failing is parked in feed_dead_letter after this many attempts (one attempt per poll).
+    max-attempts: ${FEED_MAX_ATTEMPTS:5}
+    identity-url: ${IDENTITY_FEED_URL:http://localhost:8081}
+    identity-key: ${IDENTITY_FEED_KEY:}
+    catalog-url: ${CATALOG_FEED_URL:http://localhost:8082}
+    catalog-key: ${CATALOG_FEED_KEY:}
+    order-url: ${ORDER_FEED_URL:http://localhost:8083}
+    order-key: ${ORDER_FEED_KEY:}
+    payment-url: ${PAYMENT_FEED_URL:http://localhost:8084}
+    payment-key: ${PAYMENT_FEED_KEY:}
+    fleet-url: ${FLEET_FEED_URL:http://localhost:8085}
+    fleet-key: ${FLEET_FEED_KEY:}

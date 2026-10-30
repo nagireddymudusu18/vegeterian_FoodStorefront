@@ -14,7 +14,8 @@ New-Item -ItemType Directory -Force $work | Out-Null
 
 $services = @(
     @{ Name = 'identity'; Port = 8081 }, @{ Name = 'catalog'; Port = 8082 },
-    @{ Name = 'order'; Port = 8083 }, @{ Name = 'payment'; Port = 8084 }, @{ Name = 'fleet'; Port = 8085 })
+    @{ Name = 'order'; Port = 8083 }, @{ Name = 'payment'; Port = 8084 }, @{ Name = 'fleet'; Port = 8085 },
+    @{ Name = 'notification'; Port = 8086 })
 
 function Read-Env {
     $file = Join-Path $root 'deploy\compose\.env'
@@ -28,6 +29,12 @@ function Read-Env {
         $key = node -e "console.log(require('crypto').randomBytes(24).toString('hex'))"
         Add-Content $file "FLEET_FEED_KEY=$key"
         $map.FLEET_FEED_KEY = $key
+    }
+    if (-not $map.CONTACT_EVENT_KEY) {
+        # .env predates notification-service: add the key identity and notification share, once
+        $key = node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
+        Add-Content $file "CONTACT_EVENT_KEY=$key"
+        $map.CONTACT_EVENT_KEY = $key
     }
     $map
 }
@@ -65,7 +72,7 @@ switch ($Action) {
         $e = Read-Env
         $extra = @{
             identity = @{ JWT_PRIVATE_KEY_PEM = $e.JWT_PRIVATE_KEY_PEM; PII_ENC_KEY = $e.PII_ENC_KEY; PII_HMAC_KEY = $e.PII_HMAC_KEY
-                INTERNAL_FEED_KEY = $e.IDENTITY_FEED_KEY; SMS_PROVIDER = 'logging'; EMAIL_PROVIDER = 'logging'; APP_BASE_URL = 'http://localhost:8080'; APP_MAIN_ADMIN_EMAIL = 'admin@foodapp.local' }
+                INTERNAL_FEED_KEY = $e.IDENTITY_FEED_KEY; CONTACT_EVENT_KEY = $e.CONTACT_EVENT_KEY; SMS_PROVIDER = 'logging'; EMAIL_PROVIDER = 'logging'; APP_BASE_URL = 'http://localhost:8080'; APP_MAIN_ADMIN_EMAIL = 'admin@foodapp.local' }
             catalog  = @{ INTERNAL_FEED_KEY = $e.CATALOG_FEED_KEY; SEED_DEMO_DATA = 'true' }
             order    = @{ INTERNAL_FEED_KEY = $e.ORDER_FEED_KEY; CATALOG_FEED_URL = 'http://localhost:8082'
                 CATALOG_FEED_KEY = $e.CATALOG_FEED_KEY; PAYMENT_FEED_URL = 'http://localhost:8084'
@@ -74,6 +81,12 @@ switch ($Action) {
             payment  = @{ INTERNAL_FEED_KEY = $e.PAYMENT_FEED_KEY; GATEWAY = 'fake'; ALLOW_FAKE_GATEWAY = 'true' }
             fleet    = @{ INTERNAL_FEED_KEY = $e.FLEET_FEED_KEY; ORDER_FEED_URL = 'http://localhost:8083'
                 ORDER_FEED_KEY = $e.ORDER_FEED_KEY; FEED_POLL_MS = '2000' }
+            notification = @{ CONTACT_EVENT_KEY = $e.CONTACT_EVENT_KEY; SMS_PROVIDER = 'logging'; EMAIL_PROVIDER = 'logging'
+                IDENTITY_FEED_URL = 'http://localhost:8081'; IDENTITY_FEED_KEY = $e.IDENTITY_FEED_KEY
+                CATALOG_FEED_URL = 'http://localhost:8082'; CATALOG_FEED_KEY = $e.CATALOG_FEED_KEY
+                ORDER_FEED_URL = 'http://localhost:8083'; ORDER_FEED_KEY = $e.ORDER_FEED_KEY
+                PAYMENT_FEED_URL = 'http://localhost:8084'; PAYMENT_FEED_KEY = $e.PAYMENT_FEED_KEY
+                FLEET_FEED_URL = 'http://localhost:8085'; FLEET_FEED_KEY = $e.FLEET_FEED_KEY; FEED_POLL_MS = '2000' }
         }
         foreach ($s in $services) {
             $jar = Jar $s.Name

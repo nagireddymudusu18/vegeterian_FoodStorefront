@@ -40,5 +40,6 @@ down never stops a consumer from starting.
 `deploy/k8s/base` has Kustomize manifests (bring your own managed Postgres with PostGIS for catalog).
 
 ## Status
-Milestone 1 skeleton (order status updates are pushed live over SSE). Not yet built: dispatch/fleet, notifications, restaurant and rider apps,
-admin dashboard, live payment gateway (pending merchant approval), real SMS (pending DLT registration).
+Milestone 1 skeleton (order status updates are pushed live over SSE). Dispatch/fleet and notifications (in-app inbox,
+email, SMS) are built; email and SMS use logging providers until real ones are connected. Not yet built: live payment
+gateway (pending merchant approval), real SMS (pending DLT registration), real email sender.

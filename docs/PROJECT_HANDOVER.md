@@ -26,7 +26,7 @@ Read this first, then follow the links to the detailed docs.
 
 ## 2. Architecture in one page
 
-Five independent Spring Boot microservices plus a Next.js storefront. Full detail: [architecture.md](architecture.md).
+Six independent Spring Boot microservices plus a Next.js storefront. Full detail: [architecture.md](architecture.md).
 
 | Service | Port | Owns |
 |---|---|---|
@@ -35,7 +35,8 @@ Five independent Spring Boot microservices plus a Next.js storefront. Full detai
 | order-service | 8083 | Orders and status machine, live status stream (SSE), dead-letter admin |
 | payment-service | 8084 | Payments, gateway adapter (Razorpay or fake), webhooks |
 | fleet-service | 8085 | Delivery partners, job pool, pickup and delivery with customer OTP, live stream |
-| storefront (Next.js) | 3000 | Customer site, restaurant screen, admin console, partner (rider) screens |
+| notification-service | 8086 | In-app inbox, email and SMS queue; consumes the other five feeds, publishes nothing |
+| storefront (Next.js) | 3000 | Customer site, restaurant screen, admin console, partner (rider) screens, notification bell |
 
 **Independence rules (do not break):**
 - Each service has **its own database** and its own Flyway migrations.
@@ -93,10 +94,33 @@ See [../contracts/CONVENTIONS.md](../contracts/CONVENTIONS.md).
     - **Deferred on purpose:** shared state (Redis or similar) for rate limits and live streams. It is not needed
       until more than one instance of a service runs. Documented under "Known limits" in [deployment.md](deployment.md).
 11. **Google Cloud sandbox:** Cloud SQL plus one VM running the whole stack (section 5).
+12. **Notifications (30 Oct 2026):** new `notification-service` (:8086, own `notification` database), a pure feed consumer.
+    - In-app inbox (storefront bell for customers, restaurant owners and partners, plus `/notifications`), email and SMS.
+      Email and SMS use `logging` providers (recipient masked in the log) until real ones are connected.
+    - Who is told what is one pure class, `domain/Templates` (table in [services/notification-service.md](services/notification-service.md)).
+    - identity-service now publishes `UserContactUpdated` (VERIFIED phone/email only), **encrypted** with the new
+      `CONTACT_EVENT_KEY` shared only by identity and notification. New contract `contracts/events/UserContactUpdated.json`
+      (12 schemas now); `x-consumers` updated on the events notification reads.
+    - Wired into local-run, gen-keys, gen-cloud-env, dev-gateway, both Caddyfiles, compose files, GCP VM scripts, CI and
+      deploy workflows, and the smoke test (inbox follows a whole order; SMS sent with the number masked).
+    - **Not wired:** `deploy/k8s` (it has no fleet-service either) and the data-copy scripts (`db-migrate`, `gcp-db-migrate`).
 
 ## 4. Running it locally (Docker-free)
 
-Prerequisites installed under `%USERPROFILE%\tools`: JDK 21, Maven 3.9.9, Node, portable Postgres, gcloud.
+> **Local re-setup (30 Oct 2026):** portable PostgreSQL 16.4 plus the PostGIS 3.6.2 bundle were reinstalled under
+> `%USERPROFILE%\tools\pgsql` (data in `pgdata`), `storefront\node_modules` and the service jars were rebuilt, so the
+> stack and all tests run locally again. `deploy\scripts\local-db.ps1 init` hung once waiting on the server it started:
+> if so, start Postgres with `Start-Process` as below and create the roles/databases with psql (quote `"order"` with
+> `\"` in Windows PowerShell). The earlier clean-up note still explains why things were removed: they can be deleted again.
+>
+> **Local clean-up (29 Oct 2026):** the portable PostgreSQL and PostGIS, `tools\downloads`, the Maven cache, the
+> GitHub CLI, `node_modules` and all build outputs (`services/*/target`, `storefront/.next`) were deleted because the
+> stack now runs on GCP. JDK 21, Maven and gcloud remain. To run locally or run the backend integration tests again,
+> reinstall portable Postgres 16 with PostGIS (see `deploy/scripts/local-db.ps1`), run `npm install` in `storefront/`,
+> and rebuild with `local-run.ps1 build`. The repo now lives in `New Ideas\Vegeterian_Storefront_App`.
+> `deploy/local/cloud-app.env` and `gcp.env` were kept: they hold the cloud keys and database passwords.
+
+Prerequisites (under `%USERPROFILE%\tools`) when running locally: JDK 21, Maven 3.9.9, Node, portable Postgres, gcloud.
 
 Shell setup per command (PowerShell):
 ```
@@ -124,8 +148,9 @@ the service names; the `postgres` superuser uses trust auth on 127.0.0.1.
 - Write Java files **without a UTF-8 BOM** (javac fails on it).
 - In PowerShell, comma lists in native args need quotes (`"--allow=tcp:80,tcp:443"`); do not name a parameter `$args`.
 
-**Last verified test counts (local):** identity 80, catalog 65, payment 41, fleet 28, order 92 backend tests;
-storefront 40 Vitest tests; `tsc`, lint and build clean; smoke test passes.
+**Last verified test counts (local, 30 Oct 2026):** identity 86, catalog 65, payment 41, fleet 28, order 92,
+notification 49 backend tests; storefront 47 Vitest tests; `tsc`, lint and build clean; local smoke test passes
+(including the notification checks).
 
 ## 5. Google Cloud sandbox (current state: STOPPED)
 
@@ -225,6 +250,10 @@ Common env vars (see `deploy/prod/docker-compose.prod.yml` for the full list per
   from outside, logs reach Cloud Logging.
 
 **Not verified or untested**
+- Notifications on GCP: not deployed yet. Before the next deploy: create the `notification` user and database in Cloud
+  SQL and add `PW_NOTIFICATION=<password>` to `deploy/local/gcp.env`; rerun `gen-cloud-env.mjs --keep-keys` (adds
+  `CONTACT_EVENT_KEY`); upload the `notification` jar and `app.env` (and the updated `vm/` files and `smoke.mjs`) to the
+  bucket; reset the VM. Existing users get no contact until they verify again (identity only publishes on change).
 - Docker, docker compose, the production Caddyfile, the GitHub workflows and the Kubernetes manifests (never run).
 - The browser UI for the optional emailed admin code.
 - Whether the real admin sign-up and email link flow works end to end on the cloud (the smoke test used a test admin).
@@ -235,9 +264,11 @@ Common env vars (see `deploy/prod/docker-compose.prod.yml` for the full list per
 
 1. **Buy `veggoeats.in`**, point DNS, and fill the legal details in `storefront/src/lib/brand.ts`.
 2. **Real providers:** Razorpay (needs approval; set `GATEWAY=razorpay`, keep `ALLOW_FAKE_GATEWAY=false`), SMS (DLT
-   registered) and an email sender. Then `SEED_DEMO_DATA=false`.
+   registered) and an email sender (implement `SmsSender` / `EmailSender` in notification-service and select with
+   `SMS_PROVIDER` / `EMAIL_PROVIDER`; identity-service has its own senders for OTPs and links). Then `SEED_DEMO_DATA=false`.
 3. **Maps and restaurant data:** import restaurants from OpenStreetMap and add maps to the storefront.
-4. **Notifications** (build order item that is still open).
+4. **Notifications follow-ups:** deploy to the GCP sandbox (see section 8), a backfill of contacts for users who
+   registered before this release, per-user notification preferences, and web/mobile push if wanted.
 5. **Hardening not done yet:** browser security headers (CSP), Secret Manager instead of the bucket for secrets,
    Cloud SQL private IP and IAM logins, monitoring and alerts, backup restore test, Cloudflare and rate limiting.
 6. **Before running more than one instance of any service:** move rate limits and live-stream state to shared storage

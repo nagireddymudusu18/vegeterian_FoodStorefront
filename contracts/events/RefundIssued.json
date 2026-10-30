@@ -3,7 +3,7 @@
   "title": "RefundIssued",
   "description": "Money was refunded for a payment. order-service records it.",
   "x-producer": "payment-service",
-  "x-consumers": ["order-service"],
+  "x-consumers": ["order-service", "notification-service"],
   "type": "object",
   "additionalProperties": false,
   "required": ["refundId", "paymentId", "orderId", "amountPaise"],

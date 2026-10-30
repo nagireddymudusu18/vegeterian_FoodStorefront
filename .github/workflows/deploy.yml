@@ -25,6 +25,7 @@ jobs:
           - { name: order-service, context: services/order-service }
           - { name: payment-service, context: services/payment-service }
           - { name: fleet-service, context: services/fleet-service }
+          - { name: notification-service, context: services/notification-service }
           - { name: storefront, context: storefront }
     steps:
       - uses: actions/checkout@v4

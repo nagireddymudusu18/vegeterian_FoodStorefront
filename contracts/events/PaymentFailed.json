@@ -3,7 +3,7 @@
   "title": "PaymentFailed",
   "description": "A payment attempt failed. order-service moves the order to PAYMENT_FAILED.",
   "x-producer": "payment-service",
-  "x-consumers": ["order-service"],
+  "x-consumers": ["order-service", "notification-service"],
   "type": "object",
   "additionalProperties": false,
   "required": ["paymentId", "orderId", "reason"],

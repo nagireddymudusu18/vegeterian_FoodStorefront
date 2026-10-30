@@ -12,7 +12,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        service: [identity-service, catalog-service, order-service, payment-service, fleet-service]
+        service: [identity-service, catalog-service, order-service, payment-service, fleet-service, notification-service]
     steps:
       - uses: actions/checkout@v4
       - uses: dorny/paths-filter@v3

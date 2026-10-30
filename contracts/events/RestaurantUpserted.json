@@ -3,7 +3,7 @@
   "title": "RestaurantUpserted",
   "description": "A restaurant was created or changed. order-service keeps a replica of it.",
   "x-producer": "catalog-service",
-  "x-consumers": ["order-service"],
+  "x-consumers": ["order-service", "notification-service"],
   "type": "object",
   "additionalProperties": false,
   "required": ["restaurantId", "name", "lat", "lng", "open", "deliveryRadiusMeters", "kitchenCertificationLevel", "fssaiNumber", "ownerUserId"],

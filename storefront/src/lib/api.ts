@@ -2,7 +2,7 @@ import { getTokens, setTokens } from "./tokens";
 
 export const API_BASE = (process.env.NEXT_PUBLIC_API_BASE || "http://localhost:8080").replace(/\/+$/, "");
 
-export type Service = "identity" | "catalog" | "orders" | "payments" | "fleet";
+export type Service = "identity" | "catalog" | "orders" | "payments" | "fleet" | "notifications";
 export type Diet = "PURE_VEG" | "VEGAN" | "JAIN";
 
 // ---------- Types ----------
@@ -563,4 +563,31 @@ export const fleetApi = {
         body: { partnerId },
       }),
   },
+};
+
+// ---------- Notifications ----------
+
+export interface AppNotification {
+  id: string;
+  kind: string;
+  title: string;
+  body: string;
+  orderId?: string | null;
+  createdAt: string;
+  read: boolean;
+}
+
+export interface Inbox {
+  unread: number;
+  items: AppNotification[];
+}
+
+export const notificationsApi = {
+  inbox: (limit = 20, signal?: AbortSignal) =>
+    request<Inbox>("notifications", "/notifications", { auth: true, query: { limit }, signal }),
+  unread: (signal?: AbortSignal) =>
+    request<{ unread: number }>("notifications", "/notifications/unread-count", { auth: true, signal }),
+  markRead: (id: string) =>
+    request<void>("notifications", `/notifications/${encodeURIComponent(id)}/read`, { method: "POST", auth: true }),
+  markAllRead: () => request<void>("notifications", "/notifications/read-all", { method: "POST", auth: true }),
 };
