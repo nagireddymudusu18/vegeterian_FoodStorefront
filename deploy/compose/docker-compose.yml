@@ -48,6 +48,7 @@ services:
       JWT_PUBLIC_KEY_PEM: "${JWT_PUBLIC_KEY_PEM}"
       PII_ENC_KEY: "${PII_ENC_KEY}"
       PII_HMAC_KEY: "${PII_HMAC_KEY}"
+      CONTACT_EVENT_KEY: "${CONTACT_EVENT_KEY}"
       SMS_PROVIDER: logging
       EMAIL_PROVIDER: logging
       APP_BASE_URL: ${APP_BASE_URL:-http://localhost:8080}
@@ -127,6 +128,38 @@ services:
       ORDER_FEED_KEY: "${ORDER_FEED_KEY}"
       FEED_POLL_MS: 2000
 
+  notification-db:
+    image: postgres:16
+    environment: { POSTGRES_DB: notification, POSTGRES_USER: notification, POSTGRES_PASSWORD: "${DB_PASSWORD}" }
+    volumes: [notification-data:/var/lib/postgresql/data]
+    healthcheck: { test: ["CMD-SHELL", "pg_isready -U notification"], interval: 5s, timeout: 3s, retries: 10 }
+
+  notification-service:
+    <<: *java-service
+    build: ../../services/notification-service
+    depends_on: { notification-db: { condition: service_healthy } }
+    environment:
+      <<: *java-env
+      SERVER_PORT: 8086
+      DB_URL: jdbc:postgresql://notification-db:5432/notification
+      DB_USER: notification
+      DB_PASSWORD: "${DB_PASSWORD}"
+      JWT_PUBLIC_KEY_PEM: "${JWT_PUBLIC_KEY_PEM}"
+      CONTACT_EVENT_KEY: "${CONTACT_EVENT_KEY}"
+      SMS_PROVIDER: logging
+      EMAIL_PROVIDER: logging
+      IDENTITY_FEED_URL: http://identity-service:8081
+      IDENTITY_FEED_KEY: "${IDENTITY_FEED_KEY}"
+      CATALOG_FEED_URL: http://catalog-service:8082
+      CATALOG_FEED_KEY: "${CATALOG_FEED_KEY}"
+      ORDER_FEED_URL: http://order-service:8083
+      ORDER_FEED_KEY: "${ORDER_FEED_KEY}"
+      PAYMENT_FEED_URL: http://payment-service:8084
+      PAYMENT_FEED_KEY: "${PAYMENT_FEED_KEY}"
+      FLEET_FEED_URL: http://fleet-service:8085
+      FLEET_FEED_KEY: "${FLEET_FEED_KEY}"
+      FEED_POLL_MS: 2000
+
   storefront:
     build:
       context: ../../storefront
@@ -146,3 +179,4 @@ volumes:
   order-data:
   payment-data:
   fleet-data:
+  notification-data:

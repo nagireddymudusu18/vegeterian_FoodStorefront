@@ -29,6 +29,7 @@ services:
       PW_ORDER: "${DB_PASSWORD_ORDER}"
       PW_PAYMENT: "${DB_PASSWORD_PAYMENT}"
       PW_FLEET: "${DB_PASSWORD_FLEET}"
+      PW_NOTIFICATION: "${DB_PASSWORD_NOTIFICATION}"
     volumes:
       - db-data:/var/lib/postgresql/data
       - ./init-db.sh:/docker-entrypoint-initdb.d/init-db.sh:ro
@@ -47,6 +48,7 @@ services:
       JWT_PRIVATE_KEY_PEM: "${JWT_PRIVATE_KEY_PEM}"
       PII_ENC_KEY: "${PII_ENC_KEY}"
       PII_HMAC_KEY: "${PII_HMAC_KEY}"
+      CONTACT_EVENT_KEY: "${CONTACT_EVENT_KEY}"
       # "logging" prints OTPs and email links to the log. Staging only: replace with real providers before launch.
       SMS_PROVIDER: "${SMS_PROVIDER:-logging}"
       EMAIL_PROVIDER: "${EMAIL_PROVIDER:-logging}"
@@ -111,6 +113,31 @@ services:
       INTERNAL_FEED_KEY: "${FLEET_FEED_KEY}"
       ORDER_FEED_URL: http://order-service:8083
       ORDER_FEED_KEY: "${ORDER_FEED_KEY}"
+      FEED_POLL_MS: 2000
+
+  notification-service:
+    <<: *service
+    image: ghcr.io/${GHCR_OWNER}/veggo-notification-service:${TAG:-latest}
+    environment:
+      <<: *env
+      SERVER_PORT: 8086
+      DB_URL: jdbc:postgresql://${DB_HOST:-db}:5432/notification
+      DB_USER: notification
+      DB_PASSWORD: "${DB_PASSWORD_NOTIFICATION}"
+      CONTACT_EVENT_KEY: "${CONTACT_EVENT_KEY}"
+      # "logging" writes messages (recipient masked) to the log. Replace with real providers before launch.
+      SMS_PROVIDER: "${SMS_PROVIDER:-logging}"
+      EMAIL_PROVIDER: "${EMAIL_PROVIDER:-logging}"
+      IDENTITY_FEED_URL: http://identity-service:8081
+      IDENTITY_FEED_KEY: "${IDENTITY_FEED_KEY}"
+      CATALOG_FEED_URL: http://catalog-service:8082
+      CATALOG_FEED_KEY: "${CATALOG_FEED_KEY}"
+      ORDER_FEED_URL: http://order-service:8083
+      ORDER_FEED_KEY: "${ORDER_FEED_KEY}"
+      PAYMENT_FEED_URL: http://payment-service:8084
+      PAYMENT_FEED_KEY: "${PAYMENT_FEED_KEY}"
+      FLEET_FEED_URL: http://fleet-service:8085
+      FLEET_FEED_KEY: "${FLEET_FEED_KEY}"
       FEED_POLL_MS: 2000
 
   storefront:

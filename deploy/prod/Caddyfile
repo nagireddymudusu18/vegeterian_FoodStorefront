@@ -44,6 +44,9 @@
 			flush_interval -1
 		}
 	}
+	handle_path /api/notifications/* {
+		reverse_proxy notification-service:8086
+	}
 	# Razorpay webhooks reach payment-service only through this explicit path.
 	handle /webhooks/razorpay {
 		reverse_proxy payment-service:8084

@@ -31,7 +31,7 @@ Node gateway on :8080 in place of Caddy, and `npm run dev` for the storefront. J
 ```powershell
 deploy/scripts/local-db.ps1 init      # once: initdb, starts Postgres, creates the 4 roles/databases and PostGIS
 deploy/scripts/local-run.ps1 build    # mvn package for each service (stack must be down: running jars are locked)
-deploy/scripts/local-run.ps1 up       # services :8081-8084, gateway :8080, storefront :3000
+deploy/scripts/local-run.ps1 up       # services :8081-8086, gateway :8080, storefront :3000
 node deploy/scripts/smoke.mjs         # login -> order -> fake payment -> PAID, incl. the live status stream
 deploy/scripts/local-run.ps1 status | down
 deploy/scripts/local-db.ps1 start | stop | status

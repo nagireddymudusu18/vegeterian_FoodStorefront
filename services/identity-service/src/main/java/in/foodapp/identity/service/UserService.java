@@ -31,10 +31,12 @@ public class UserService {
     private final Clock clock;
     private final RoleResolver roles;
     private final TokenIssuer tokens;
+    private final ContactPublisher contacts;
 
     public UserService(UserRepository users, ConsentRepository consents, OtpService otp,
                        RefreshTokenService refreshTokens, OutboxService outbox, PiiCipher cipher,
-                       Clock clock, RoleResolver roles, TokenIssuer tokens) {
+                       Clock clock, RoleResolver roles, TokenIssuer tokens, ContactPublisher contacts) {
+        this.contacts = contacts;
         this.users = users;
         this.consents = consents;
         this.otp = otp;
@@ -73,6 +75,7 @@ public class UserService {
             user = users.save(new User(UUID.randomUUID(), cipher.encrypt(e164Phone), phoneHash,
                     new String[]{"CUSTOMER"}, now));
             outbox.publish("UserRegistered", user.getId(), Map.of("userId", user.getId().toString()));
+            contacts.phoneChanged(user);
         }
         if (name != null && !name.isBlank() && user.getNameEnc() == null) {
             user.setName(cipher.encrypt(name.trim()));
@@ -139,6 +142,7 @@ public class UserService {
         }
         user.setPhone(cipher.encrypt(e164Phone), hash);
         users.save(user);
+        contacts.phoneChanged(user);
     }
 
     @Transactional

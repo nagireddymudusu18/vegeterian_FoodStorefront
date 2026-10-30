@@ -3,6 +3,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { useRequireAuth } from "@/features/auth";
+import { NotificationBell } from "@/features/notifications";
 import { identity } from "@/lib/api";
 import { Spinner } from "@/components/ui";
 
@@ -20,9 +21,12 @@ export default function RestaurantLayout({ children }: { children: ReactNode }) 
           <Link href="/restaurant" className="text-lg font-extrabold tracking-tight">
             Veggo Eats Kitchen
           </Link>
-          <button type="button" onClick={logout} className="ml-auto rounded-lg px-3 py-2 text-sm hover:bg-orange-700">
-            Sign out
-          </button>
+          <div className="ml-auto flex items-center gap-1">
+            <NotificationBell tone="dark" />
+            <button type="button" onClick={logout} className="rounded-lg px-3 py-2 text-sm hover:bg-orange-700">
+              Sign out
+            </button>
+          </div>
         </div>
       </header>
       <main id="main" className="mx-auto w-full max-w-4xl px-4 py-6">

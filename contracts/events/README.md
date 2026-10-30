@@ -16,7 +16,7 @@ Production registers none. In tests, `contract/ContractOutboxValidator` is picke
 written by any integration test is checked: it must have a contract, be produced by this service, and match its schema.
 A renamed, dropped or retyped field fails the test that triggers it.
 
-**Consumers** (order-service, fleet-service). `ConsumerContract*Test` feeds the golden example of each consumed event
+**Consumers** (order-service, fleet-service, notification-service). `ConsumerContract*Test` feeds the golden example of each consumed event
 through the real handler and asserts the effect (a replica row, an order status, a delivery job). Handlers skip
 malformed events with a warning, so these tests check outcomes, not just the absence of exceptions.
 

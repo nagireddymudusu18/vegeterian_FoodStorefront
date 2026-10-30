@@ -62,6 +62,7 @@ const values = {
   JWT_PUBLIC_KEY_PEM: pub,
   PII_ENC_KEY: keep("PII_ENC_KEY", b64),
   PII_HMAC_KEY: keep("PII_HMAC_KEY", b64),
+  CONTACT_EVENT_KEY: keep("CONTACT_EVENT_KEY", b64),
   IDENTITY_FEED_KEY: keep("IDENTITY_FEED_KEY", token),
   CATALOG_FEED_KEY: keep("CATALOG_FEED_KEY", token),
   ORDER_FEED_KEY: keep("ORDER_FEED_KEY", token),
@@ -72,6 +73,7 @@ const values = {
   DB_PASSWORD_ORDER: pw.ORDER,
   DB_PASSWORD_PAYMENT: pw.PAYMENT,
   DB_PASSWORD_FLEET: pw.FLEET,
+  DB_PASSWORD_NOTIFICATION: pw.NOTIFICATION,
   // Sandbox only: the fake gateway pays every order and the logging providers write OTPs and links to the log.
   GATEWAY: "fake",
   ALLOW_FAKE_GATEWAY: "true",

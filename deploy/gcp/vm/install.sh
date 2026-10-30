@@ -41,7 +41,7 @@ id caddy >/dev/null 2>&1 || useradd --system --home-dir /var/lib/caddy --create-
 
 log "downloading artifacts"
 need fetch app.env $V/app.env
-for f in identity catalog order payment fleet; do need fetch "jars/$f.jar" "$V/jars/$f.jar"; done
+for f in identity catalog order payment fleet notification; do need fetch "jars/$f.jar" "$V/jars/$f.jar"; done
 need fetch storefront.tar.gz /tmp/storefront.tar.gz
 need fetch vm/run-service.sh $V/bin/run-service.sh
 need fetch vm/Caddyfile $V/Caddyfile
@@ -157,14 +157,14 @@ EOF
 fi
 
 systemctl daemon-reload
-systemctl enable veggo-proxy veggo-storefront veggo-caddy veggo@identity veggo@catalog veggo@order veggo@payment veggo@fleet >/dev/null 2>&1
+systemctl enable veggo-proxy veggo-storefront veggo-caddy veggo@identity veggo@catalog veggo@order veggo@payment veggo@fleet veggo@notification >/dev/null 2>&1
 systemctl restart veggo-proxy
 sleep 3
-for s in identity catalog order payment fleet; do systemctl restart veggo@$s; done
+for s in identity catalog order payment fleet notification; do systemctl restart veggo@$s; done
 systemctl restart veggo-storefront veggo-caddy
 log "units started; waiting for services"
 
-for p in 8081 8082 8083 8084 8085; do
+for p in 8081 8082 8083 8084 8085 8086; do
   for i in $(seq 1 90); do
     code=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:$p/actuator/health)
     [ "$code" = "200" ] && break

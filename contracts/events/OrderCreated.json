@@ -3,7 +3,7 @@
   "title": "OrderCreated",
   "description": "A customer placed an order (status CREATED, not yet paid).",
   "x-producer": "order-service",
-  "x-consumers": [],
+  "x-consumers": ["notification-service"],
   "type": "object",
   "additionalProperties": false,
   "required": ["orderId", "customerId", "restaurantId", "totalPaise"],

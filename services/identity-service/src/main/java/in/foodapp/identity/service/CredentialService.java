@@ -39,11 +39,13 @@ public class CredentialService {
     private final EmailTokenService emailTokens;
     private final EmailSender emails;
     private final AppProperties props;
+    private final ContactPublisher contacts;
 
     public CredentialService(UserRepository users, ConsentRepository consents, PasswordService passwords,
                              RoleResolver roles, TokenIssuer tokens, RefreshTokenService refreshTokens, OutboxService outbox,
                              PiiCipher cipher, Clock clock, EmailTokenService emailTokens, EmailSender emails,
-                             AppProperties props) {
+                             AppProperties props, ContactPublisher contacts) {
+        this.contacts = contacts;
         this.users = users;
         this.consents = consents;
         this.passwords = passwords;
@@ -137,6 +139,7 @@ public class CredentialService {
         }
         user.markEmailVerified();
         users.save(user);
+        contacts.emailVerified(user);
         return tokens.customerTokenResponse(user, refreshTokens.issueNewFamily(user.getId()));
     }
 
@@ -177,6 +180,7 @@ public class CredentialService {
         user.markEmailVerified();
         user.recordSuccessfulLogin();
         users.save(user);
+        contacts.emailVerified(user);
         refreshTokens.revokeAllForUser(userId);
     }
 

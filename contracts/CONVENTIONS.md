@@ -12,6 +12,7 @@ its own DTOs.
 | order-service | 8083 | `/api/orders/*` -> `/` |
 | payment-service | 8084 | `/api/payments/*` -> `/` |
 | fleet-service | 8085 | `/api/fleet/*` -> `/` |
+| notification-service | 8086 | `/api/notifications/*` -> `/` |
 | storefront | 3000 | `/` |
 
 The edge strips the `/api/<svc>` prefix, so inside each service paths are `/auth/...`, `/restaurants`, `/orders`,
@@ -90,6 +91,11 @@ fleet-service:
 identity-service:
 - `UserRegistered` `{userId}`
 - `UserDeleted` `{userId}`
+- `UserContactUpdated` `{userId, phoneEnc?, emailEnc?}`: a VERIFIED phone or email, each AES-256-GCM encrypted
+  (`base64(IV || ciphertext)`) with `CONTACT_EVENT_KEY`, shared only with notification-service. An absent field did not change.
+
+notification-service consumes `UserContactUpdated`, `UserDeleted`, `RestaurantUpserted`, `OrderCreated`,
+`OrderStatusChanged`, `PaymentFailed`, `RefundIssued` and `DeliveryAssigned`; it publishes nothing.
 
 ## Order and payment flow (no service-to-service calls)
 1. Storefront `POST /api/orders/orders` (cart lines: itemId + quantity only) -> order-service recomputes prices from
@@ -102,7 +108,8 @@ identity-service:
 
 ## Environment variable names
 Common: `SERVER_PORT`, `DB_URL` (jdbc), `DB_USER`, `DB_PASSWORD`, `INTERNAL_FEED_KEY`, `JWT_PUBLIC_KEY_PEM`.
-identity: `JWT_PRIVATE_KEY_PEM`, `PII_ENC_KEY` (base64 32 bytes), `PII_HMAC_KEY` (base64 32 bytes), `SMS_PROVIDER` (`logging`).
+identity: `JWT_PRIVATE_KEY_PEM`, `PII_ENC_KEY` (base64 32 bytes), `PII_HMAC_KEY` (base64 32 bytes), `CONTACT_EVENT_KEY` (base64 32 bytes, also given to notification), `SMS_PROVIDER` (`logging`).
+notification: `CONTACT_EVENT_KEY`, `SMS_PROVIDER`, `EMAIL_PROVIDER` (`logging`), `<PRODUCER>_FEED_URL` / `<PRODUCER>_FEED_KEY` for identity, catalog, order, payment and fleet.
 order: `CATALOG_FEED_URL`, `CATALOG_FEED_KEY`, `PAYMENT_FEED_URL`, `PAYMENT_FEED_KEY`, `FEED_POLL_MS` (2000),
   `DELIVERY_FEE_PAISE` (3000), `GST_PERCENT` (5).
 payment: `GATEWAY` (`fake`|`razorpay`), `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, `RAZORPAY_WEBHOOK_SECRET`.

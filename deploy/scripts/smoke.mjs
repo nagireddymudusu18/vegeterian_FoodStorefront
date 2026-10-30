@@ -240,4 +240,36 @@ console.log("  delivered; fleet closed the job: " + (fj === 0));
 fctrl.abort();
 console.log("  fleet stream pushes: " + pushes);
 if (pushes < 3) throw new Error("fleet stream pushed too few changes: " + pushes);
+
+step("notifications: the customer inbox follows the whole order; the rider is told; the SMS provider was called");
+const NTF = "http://127.0.0.1:8086";
+const expectKinds = (inbox, kinds, who) => {
+  const have = inbox.items.map((n) => n.kind);
+  const missing = kinds.filter((k) => !have.includes(k));
+  if (missing.length) throw new Error(`${who} inbox is missing ${missing.join(", ")}; has ${have.join(", ")}`);
+};
+const waitInbox = async (tok, kinds, who) => {
+  let inbox;
+  for (let i = 0; i < 20; i++) {
+    inbox = await call(`${NTF}/notifications?limit=50`, { token: tok });
+    if (kinds.every((k) => inbox.items.some((n) => n.kind === k))) return inbox;
+    await sleep(1000);
+  }
+  expectKinds(inbox, kinds, who);
+};
+const custInbox = await waitInbox(token, ["ORDER_PLACED", "ORDER_PAID", "ORDER_ACCEPTED", "ORDER_PREPARING", "ORDER_RIDER_ASSIGNED",
+  "ORDER_OUT_FOR_DELIVERY", "ORDER_DELIVERED"], "customer");
+if (custInbox.unread < 7) throw new Error("customer unread count too low: " + custInbox.unread);
+await waitInbox(riderToken, ["NEW_JOB", "JOB_ASSIGNED"], "rider");
+if ((await call(`${NTF}/notifications?limit=50`, { token: ownerToken })).items.some((n) => n.kind === "ORDER_PAID"))
+  throw new Error("the restaurant owner received the customer's notification");
+await call(`${NTF}/notifications/read-all`, { method: "POST", token });
+if ((await call(`${NTF}/notifications/unread-count`, { token })).unread !== 0) throw new Error("read-all did not clear the unread count");
+if (await status(() => call(`${NTF}/notifications`)) !== 401) throw new Error("the inbox must need sign-in");
+const ntfLog = readFileSync(join(here, "..", "local", "notification-service.log"), "utf8");
+const phoneTail = phone.slice(-4);
+if (!new RegExp(`\\[SMS_PROVIDER=logging\\] to \\*+${phoneTail}: Out for delivery`).test(ntfLog))
+  throw new Error("no 'Out for delivery' SMS for the customer in notification-service.log");
+if (ntfLog.includes(phone)) throw new Error("a full phone number was written to notification-service.log");
+console.log("  customer inbox has the whole order; SMS sent with the number masked");
 console.log("SMOKE TEST PASSED");

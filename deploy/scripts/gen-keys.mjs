@@ -25,6 +25,7 @@ const lines = [
   `JWT_PUBLIC_KEY_PEM=${oneLine(publicKey)}`,
   `PII_ENC_KEY=${secret()}`,
   `PII_HMAC_KEY=${secret()}`,
+  `CONTACT_EVENT_KEY=${secret()}`,
   `IDENTITY_FEED_KEY=${token()}`,
   `CATALOG_FEED_KEY=${token()}`,
   `ORDER_FEED_KEY=${token()}`,

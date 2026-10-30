@@ -3,7 +3,7 @@
   "title": "OrderStatusChanged",
   "description": "An order moved from one status to another. fleet-service builds its delivery jobs from it, which is why orderNumber and restaurantName are included.",
   "x-producer": "order-service",
-  "x-consumers": ["fleet-service"],
+  "x-consumers": ["fleet-service", "notification-service"],
   "type": "object",
   "additionalProperties": false,
   "required": ["orderId", "customerId", "restaurantId", "from", "to", "totalPaise", "orderNumber"],
