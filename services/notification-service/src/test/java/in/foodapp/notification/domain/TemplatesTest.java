@@ -65,7 +65,7 @@ class TemplatesTest {
         assertThat(order.outbound()).isEqualTo(Set.of(Channel.EMAIL));
 
         Message job = Templates.newDeliveryJob("FA-1", "x", null);
-        assertThat(job.body()).contains("a restaurant").contains("FA-1");
+        assertThat(job.body()).contains("a restaurant").contains("FA-1").contains("Partner page").doesNotContain("Jobs");
         assertThat(job.outbound()).isEmpty();
         assertThat(Templates.jobAssigned("FA-1", "x", "Cafe").body()).contains("Cafe");
     }

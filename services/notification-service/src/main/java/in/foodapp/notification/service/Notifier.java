@@ -27,6 +27,12 @@ public class Notifier {
     /** Role name used as the audience of delivery-job broadcasts. */
     public static final String PARTNER = "PARTNER";
 
+    private static final String JOB_KEY_PREFIX = "job:";
+
+    /** Statuses after which the "new delivery job" broadcast is no longer true (taken, or the order ended). */
+    private static final java.util.Set<String> JOB_CLOSED = java.util.Set.of("RIDER_ASSIGNED", "PICKED_UP",
+            "DELIVERED", "CANCELLED", "REJECTED_BY_MERCHANT", "REFUNDED", "PAYMENT_FAILED");
+
     private final NotificationStore notifications;
     private final ReplicaStore replicas;
     private final Duration maxEventAge;
@@ -55,6 +61,11 @@ public class Notifier {
     public void orderStatusChanged(UUID orderId, UUID customerId, UUID restaurantId, String to, long totalPaise,
                                    String orderNumber, String restaurantName, Instant at) {
         replicas.upsertOrder(orderId, customerId, restaurantId, orderNumber, restaurantName, totalPaise);
+        // Not conditional on freshness: once the job is taken (or the order ended) the broadcast must go, even when
+        // this event is old. The order feed is ordered, so this always runs after the PREPARING event created it.
+        if (JOB_CLOSED.contains(to)) {
+            notifications.withdraw(JOB_KEY_PREFIX + orderId);
+        }
         if (!fresh(at)) {
             return;
         }
@@ -65,7 +76,7 @@ public class Notifier {
         } else if ("PREPARING".equals(to)) {
             notifications.createForAudience(PARTNER,
                     Templates.newDeliveryJob(orderNumber, orderId.toString(), restaurantName), orderId,
-                    "job:" + orderId);
+                    JOB_KEY_PREFIX + orderId);
         }
     }
 

@@ -23,4 +23,8 @@ public interface PaymentRepository extends JpaRepository<Payment, UUID> {
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select p from Payment p where p.gatewayRef = :ref order by p.createdAt asc")
     List<Payment> findByGatewayRefForUpdate(@Param("ref") String ref);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select p from Payment p where p.orderId = :orderId order by p.createdAt asc")
+    List<Payment> findByOrderIdForUpdate(@Param("orderId") UUID orderId);
 }

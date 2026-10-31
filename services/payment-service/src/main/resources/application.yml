@@ -58,6 +58,13 @@ springdoc:
 
 app:
   internal-feed-key: ${INTERNAL_FEED_KEY:}
+  # order-service's event feed: payment-service refunds a captured payment when its order is cancelled or rejected.
+  # Polling is disabled while the key is blank.
+  feed:
+    order-url: ${ORDER_FEED_URL:http://localhost:8083}
+    order-key: ${ORDER_FEED_KEY:}
+    batch-size: ${FEED_BATCH_SIZE:100}
+    max-attempts: ${FEED_MAX_ATTEMPTS:5}
   jwt:
     # PEM text; literal "\n" escapes are accepted. Empty default => startup fails fast in SecurityConfig.
     public-key-pem: ${JWT_PUBLIC_KEY_PEM:}

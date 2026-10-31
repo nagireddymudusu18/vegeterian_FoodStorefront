@@ -8,4 +8,3 @@
   [order](services/order-service.md), [payment](services/payment-service.md), [fleet](services/fleet-service.md),
   [notification](services/notification-service.md)
 - [../contracts/CONVENTIONS.md](../contracts/CONVENTIONS.md): the cross-service contract
-- [../deploy/k8s/README.md](../deploy/k8s/README.md): other clouds

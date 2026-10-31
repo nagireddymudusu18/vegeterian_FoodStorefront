@@ -51,6 +51,11 @@ public class NotificationStore {
                 dedupeKey) == 1;
     }
 
+    /** Removes a notification (and its read marks) that is no longer true, for example a job someone has taken. */
+    public boolean withdraw(String dedupeKey) {
+        return jdbc.update("DELETE FROM notification WHERE dedupe_key = ?", dedupeKey) > 0;
+    }
+
     /** SQL condition (with its arguments) for "addressed to this user, or broadcast to one of their roles". */
     private static String visible(UUID userId, Collection<String> audiences, int ttlMinutes, List<Object> args) {
         args.add(userId);

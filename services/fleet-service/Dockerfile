@@ -9,7 +9,7 @@ RUN mvn -B -q package -DskipTests
 FROM eclipse-temurin:21-jre
 RUN groupadd --system app && useradd --system --gid app --no-create-home app
 WORKDIR /app
-COPY --from=build /build/target/fleet-service-*.jar /app/app.jar
+COPY --from=build /build/target/fleet-service.jar /app/app.jar
 USER app
 ENV JAVA_OPTS="-XX:MaxRAMPercentage=70"
 EXPOSE 8085

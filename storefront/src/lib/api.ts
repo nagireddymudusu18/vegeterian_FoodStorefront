@@ -199,6 +199,8 @@ async function send(service: Service, path: string, o: ReqOptions, token?: strin
 
 let refreshing: Promise<boolean> | null = null;
 
+const TOKEN_RENEW_MARGIN_MS = 15_000;
+
 /** One shared refresh attempt; resolves true when new tokens were stored. */
 function refreshTokens(): Promise<boolean> {
   if (refreshing) return refreshing;
@@ -245,6 +247,12 @@ export function redirectToLogin(): void {
 
 async function request<T>(service: Service, path: string, o: ReqOptions = {}): Promise<T> {
   const auth = o.auth ?? false;
+  // Renew a token that is expired or about to expire first, so the server is not asked with a token it must refuse
+  // (that shows as a 401 in the browser console even though the retry succeeds).
+  const held = auth ? getTokens() : null;
+  if (held?.expiresAt !== undefined && held.expiresAt - Date.now() < TOKEN_RENEW_MARGIN_MS) {
+    await refreshTokens();
+  }
   let res = await send(service, path, o, auth ? getTokens()?.accessToken : undefined);
 
   if (auth && res.status === 401) {
@@ -496,6 +504,69 @@ export const flagsApi = {
       auth: true,
       body: { enabled },
     }),
+};
+
+// ---------- Admin: restaurants and owners ----------
+
+export const adminRestaurants = {
+  /** The public search with a radius wide enough to cover the whole country from the default city centre. */
+  list: (signal?: AbortSignal) =>
+    request<Restaurant[]>("catalog", "/restaurants", {
+      query: { lat: 12.9716, lng: 77.5946, radiusMeters: 3_000_000 },
+      signal,
+    }),
+  /** Gives the account registered with this email the RESTAURANT role. */
+  grantOwner: (email: string) =>
+    request<{ userId: string }>("identity", "/admin/restaurant-owners", { method: "POST", auth: true, body: { email } }),
+  /** Catalog's update replaces the whole restaurant, so the current values are sent back with the new owner. */
+  setOwner: (r: Restaurant, ownerUserId: string) =>
+    request<Restaurant>("catalog", `/restaurants/${encodeURIComponent(r.id)}`, {
+      method: "PUT",
+      auth: true,
+      body: {
+        name: r.name,
+        fssaiNumber: r.fssaiNumber,
+        kitchenCertificationLevel: r.kitchenCertificationLevel,
+        lat: r.lat,
+        lng: r.lng,
+        deliveryRadiusMeters: r.deliveryRadiusMeters,
+        open: r.open,
+        cuisine: r.cuisine,
+        ownerUserId,
+      },
+    }),
+};
+
+// ---------- Admin: feed events that could not be applied ----------
+
+export type DeadLetterService = "orders" | "fleet" | "notifications" | "payments";
+
+export interface DeadLetter {
+  id: number;
+  source: string;
+  eventId: number;
+  eventType: string | null;
+  aggregateId: string | null;
+  payload: unknown;
+  error: string;
+  attempts: number;
+  parkedAt: string;
+}
+
+const DEAD_LETTER_PATH: Record<DeadLetterService, string> = {
+  orders: "/admin/dead-letters",
+  fleet: "/fleet/admin/dead-letters",
+  notifications: "/notifications/admin/dead-letters",
+  payments: "/payments/admin/dead-letters",
+};
+
+export const deadLettersApi = {
+  list: (service: DeadLetterService, signal?: AbortSignal) =>
+    request<{ open: number; items: DeadLetter[] }>(service, DEAD_LETTER_PATH[service], { auth: true, signal }),
+  retry: (service: DeadLetterService, id: number) =>
+    request<void>(service, `${DEAD_LETTER_PATH[service]}/${id}/retry`, { method: "POST", auth: true }),
+  discard: (service: DeadLetterService, id: number) =>
+    request<void>(service, `${DEAD_LETTER_PATH[service]}/${id}/discard`, { method: "POST", auth: true }),
 };
 
 // ---------- Delivery partners (fleet) ----------

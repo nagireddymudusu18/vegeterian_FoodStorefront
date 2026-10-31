@@ -138,9 +138,17 @@ function Dashboard({ partner, onPartner }: { partner: Partner; onPartner: (p: Pa
 
   const refresh = useCallback(async () => {
     try {
-      const [m, p] = await Promise.all([fleetApi.mine(), onlineRef.current ? fleetApi.pool() : Promise.resolve([])]);
+      // the partner may have just gone offline (409): then there is simply no pool
+      const poolRequest = onlineRef.current
+        ? fleetApi.pool().catch((e: { status?: number }) => {
+            if (e?.status === 409) return [] as Delivery[];
+            throw e;
+          })
+        : Promise.resolve([] as Delivery[]);
+      const [m, p] = await Promise.all([fleetApi.mine(), poolRequest]);
       setMine(m);
       setPool(p);
+      setError(null);
       onPartner(await fleetApi.me());
     } catch (e) {
       setError(e);
@@ -153,14 +161,16 @@ function Dashboard({ partner, onPartner }: { partner: Partner; onPartner: (p: Pa
     void refresh();
     const t = setInterval(() => void refresh(), live ? POLL_LIVE_MS : POLL_DOWN_MS);
     return () => clearInterval(t);
-  }, [refresh, live]);
+    // `online` is a dependency so going Online loads the pool at once (refresh reads the flag through a ref that is
+    // only current after the re-render)
+  }, [refresh, live, online]);
 
-  async function run(key: string, fn: () => Promise<unknown>) {
+  async function run(key: string, fn: () => Promise<unknown>, reload = true) {
     setBusy(key);
     setError(null);
     try {
       await fn();
-      await refresh();
+      if (reload) await refresh();
     } catch (e) {
       setError(e);
     } finally {
@@ -183,7 +193,17 @@ function Dashboard({ partner, onPartner }: { partner: Partner; onPartner: (p: Pa
             role="switch"
             aria-checked={online}
             disabled={busy === "online"}
-            onClick={() => run("online", async () => onPartner(await fleetApi.setOnline(!online)))}
+            onClick={() =>
+              run(
+                "online",
+                async () => {
+                  const next = await fleetApi.setOnline(!online);
+                  onlineRef.current = next.online;
+                  onPartner(next);
+                },
+                false,
+              )
+            }
             className={`ml-auto rounded-full px-4 py-2 text-sm font-semibold text-white ${
               online ? "bg-emerald-700" : "bg-stone-500"
             }`}
