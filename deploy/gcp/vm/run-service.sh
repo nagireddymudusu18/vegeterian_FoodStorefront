@@ -31,6 +31,7 @@ case "$svc" in
   payment)
     port=8084
     extra=($(db payment "$DB_PASSWORD_PAYMENT") "INTERNAL_FEED_KEY=$PAYMENT_FEED_KEY"
+      "ORDER_FEED_URL=http://127.0.0.1:8083" "ORDER_FEED_KEY=$ORDER_FEED_KEY" "FEED_POLL_MS=2000"
       "GATEWAY=$GATEWAY" "ALLOW_FAKE_GATEWAY=$ALLOW_FAKE_GATEWAY")
     ;;
   fleet)

@@ -8,15 +8,15 @@ the only coupling is the written contract in [`contracts/CONVENTIONS.md`](../con
 ```
                      Browser
                         |
-                 Caddy edge :8080      /internal/** is never routed
-        +---------------+---------------+---------------+
-        |               |               |               |
-   identity :8081  catalog :8082   order :8083    payment :8084      storefront :3000
-        |               |               |               |
-   identity-db     catalog-db       order-db       payment-db
-   (Postgres)      (PostGIS)       (Postgres)      (Postgres)
+               Caddy edge :443 (HTTPS)     /internal/** is never routed
+        +---------------+---------------+---------------+---------------+---------------+
+        |               |               |               |               |               |
+   identity :8081  catalog :8082   order :8083    payment :8084    fleet :8085  notification :8086     storefront :3000
+        |               |               |               |               |               |
+   identity-db     catalog-db       order-db       payment-db       fleet-db     notification-db      (Cloud SQL, one
+   (Postgres)      (PostGIS)       (Postgres)      (Postgres)      (Postgres)      (Postgres)         database each)
 
-   catalog --(pull feed)--> order <--(pull feed)-- payment
+   catalog --(pull feed)--> order <--(pull feed)-- payment      fleet --> order       notification <-- all five feeds
 ```
 
 ## How services share data without calling each other
@@ -75,10 +75,10 @@ The storefront groups code by feature under `storefront/src/features/` (`auth`, 
 
 ## Repository map
 ```
-services/      four Spring Boot services (each is a standalone Maven project)
+services/      six Spring Boot services (each is a standalone Maven project)
 storefront/    Next.js web app
 contracts/     cross-service contract documents
-deploy/        compose (local), k8s (other clouds), scripts (dev key generation)
+deploy/        gcp (sandbox VM files and runbook), scripts (cloud secrets generator, smoke test)
 docs/          this documentation
 .github/       path-filtered CI workflows
 ```

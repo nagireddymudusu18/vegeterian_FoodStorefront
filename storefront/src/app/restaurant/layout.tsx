@@ -22,6 +22,9 @@ export default function RestaurantLayout({ children }: { children: ReactNode }) 
             Veggo Eats Kitchen
           </Link>
           <div className="ml-auto flex items-center gap-1">
+            <Link href="/" className="rounded-lg px-3 py-2 text-sm hover:bg-orange-700">
+              Storefront
+            </Link>
             <NotificationBell tone="dark" />
             <button type="button" onClick={logout} className="rounded-lg px-3 py-2 text-sm hover:bg-orange-700">
               Sign out
