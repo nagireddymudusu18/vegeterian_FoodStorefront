@@ -1,45 +1,36 @@
-﻿# Food Marketplace (India)
+# Veggo Eats: food marketplace (India)
 
-On-demand food marketplace with dietary classification (Pure Veg / Vegan / Jain). Backend is a set of **fully
-independent Spring Boot microservices** (own database, no shared code, no service-to-service calls); services
-exchange data only through pull-based event feeds (Postgres outbox). See `contracts/CONVENTIONS.md`.
+On-demand food marketplace for Pure Veg, Vegan and Jain customers. The backend is a set of **fully independent Spring
+Boot microservices** (own database, no shared code, no service-to-service calls); services exchange data only through
+pull-based event feeds (Postgres outbox). See `contracts/CONVENTIONS.md`.
 
-| Piece | Path | Port |
+| Piece | Path | Port (on the VM) |
 |---|---|---|
-| identity-service (OTP login, JWT, DPDP consent/erasure) | `services/identity-service` | 8081 |
+| identity-service (OTP and email login, JWT, roles, admin team, DPDP consent/erasure) | `services/identity-service` | 8081 |
 | catalog-service (restaurants, menus, diet filters, geo search) | `services/catalog-service` | 8082 |
-| order-service (cart pricing, order state machine) | `services/order-service` | 8083 |
-| payment-service (SKELETON: fake gateway, Razorpay stub, ledger) | `services/payment-service` | 8084 |
+| order-service (cart pricing, order state machine, live status) | `services/order-service` | 8083 |
+| payment-service (fake gateway, Razorpay stub, ledger) | `services/payment-service` | 8084 |
+| fleet-service (delivery partners, job pool) | `services/fleet-service` | 8085 |
+| notification-service (in-app inbox, email, SMS) | `services/notification-service` | 8086 |
 | web storefront (Next.js) | `storefront` | 3000 |
-| edge proxy (Caddy) | `deploy/compose` | 8080 |
+| edge proxy (Caddy, HTTPS) | `deploy/gcp/vm/Caddyfile` | 80 / 443 |
+
+## Where it runs
+Everything runs on Google Cloud (a sandbox first): one VM with the services as systemd units, Cloud SQL for the
+databases, Caddy in front. Nothing needs to run on a developer machine. See
+[`deploy/gcp/README.md`](deploy/gcp/README.md) for the resources, how a deploy works and how to start and stop it, and
+[`docs/PROJECT_HANDOVER.md`](docs/PROJECT_HANDOVER.md) for the full picture.
 
 ## Documentation
-Start with `docs/README.md` (getting started, architecture, one guide per service). `make help` lists the helper
-commands (needs GNU make; on Windows `choco install make` or use Git Bash).
+Start with `docs/README.md` (getting started, architecture, one guide per service).
 
-## Prerequisites
-JDK 21, Docker Desktop, Node 22. Maven is optional (the Dockerfiles build with Maven in a container).
-
-## Run everything locally
-```powershell
-node deploy/scripts/gen-keys.mjs          # creates deploy/compose/.env with dev secrets (git-ignored)
-cd deploy/compose
-docker compose up --build
-```
-Open http://localhost:8080. Login OTPs are printed in the `identity-service` container logs.
-Payments use the fake gateway (an amount ending in 13 paise fails on purpose).
-
-No Docker (e.g. a locked-down Windows laptop)? See "Run the whole stack without Docker" in `docs/getting-started.md`
-(`deploy/scripts/local-db.ps1` and `local-run.ps1`).
-
-## Run one service alone
-Each service needs only its own Postgres; e.g. `docker compose up identity-db identity-service`. Producers being
-down never stops a consumer from starting.
-
-## Other clouds
-`deploy/k8s/base` has Kustomize manifests (bring your own managed Postgres with PostGIS for catalog).
+## Tests
+GitHub Actions runs them on every push and pull request: `ci-java-services` (`mvn verify` per changed service, with
+Testcontainers Postgres, plus a Docker image build) and `ci-storefront` (lint, tests, build). To run a service's tests
+yourself you need JDK 21, Maven and either Docker or a Postgres reachable through `TEST_DB_URL`
+(see `docs/getting-started.md`).
 
 ## Status
-Milestone 1 skeleton (order status updates are pushed live over SSE). Dispatch/fleet and notifications (in-app inbox,
-email, SMS) are built; email and SMS use logging providers until real ones are connected. Not yet built: live payment
-gateway (pending merchant approval), real SMS (pending DLT registration), real email sender.
+Dispatch/fleet and notifications (in-app inbox, email, SMS) are built; email and SMS use logging providers until real
+ones are connected. Not yet built: live payment gateway (pending merchant approval), real SMS (pending DLT
+registration), real email sender.

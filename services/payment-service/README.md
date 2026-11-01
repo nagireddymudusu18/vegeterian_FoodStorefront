@@ -21,6 +21,7 @@ The fake gateway marks every payment as paid without charging anyone, so it **re
 | `GET /payments/{id}` | JWT, owner or `ADMIN` | else 403 |
 | `POST /payments/{id}/refund` | JWT, role `ADMIN` | Header `Idempotency-Key`, body `{amountPaise}`. Cannot exceed captured minus already refunded (422). Emits `RefundIssued`. Payment becomes `REFUNDED` when fully refunded. |
 | `POST /webhooks/razorpay` | none (HMAC) | Raw body; `X-Razorpay-Signature` (hex HMAC-SHA256 with `RAZORPAY_WEBHOOK_SECRET`) -> 401 if bad; `X-Razorpay-Event-Id` deduped via unique `webhook_events.gateway_event_id` (duplicate -> 200 `DUPLICATE`, no state change, no ledger posting). Maps `payment.captured`, `payment.failed`, `refund.processed` onto the same domain operations as the REST API. |
+| `GET /payments/admin/dead-letters`, `POST /payments/admin/dead-letters/{id}/retry\|discard` | JWT, role `ADMIN` | Order-feed events that could not be applied (e.g. the gateway refused an automatic refund). |
 | `GET /internal/events?after=&limit=` | `X-Internal-Key` = `INTERNAL_FEED_KEY` | Outbox feed exactly per `contracts/CONVENTIONS.md` (401 otherwise; not routed by the edge). |
 | `GET /actuator/health`, `/swagger-ui.html`, `/v3/api-docs` | none | |
 
@@ -34,6 +35,14 @@ Errors are RFC 7807 `application/problem+json`. Money is `long` paise.
 ### Events (outbox, same transaction as the state change)
 `PaymentCaptured {paymentId, orderId, amountPaise, gatewayRef}`, `PaymentFailed {paymentId, orderId, reason}`,
 `RefundIssued {refundId, paymentId, orderId, amountPaise}`. Outbox inserts take `pg_advisory_xact_lock(84004001)` first.
+
+### Automatic refund (consumes order-service's feed)
+`OrderFeedConsumer` polls `ORDER_FEED_URL` with `ORDER_FEED_KEY` (cursor, retries and dead letters as in
+`contracts/CONVENTIONS.md`). On `OrderStatusChanged` with `to` = `CANCELLED` or `REJECTED_BY_MERCHANT` it records the
+order in `closed_order` and refunds whatever is still refundable of each `CAPTURED` payment of that order (one refund,
+idempotency key `auto:<paymentId>`, so repeats do nothing). A payment captured after its order closed is refunded
+immediately. If the gateway refuses, the event is retried and finally parked for an admin. order-service then moves the
+order to `REFUNDED` on `RefundIssued`.
 
 ### Ledger
 `ledger_entries` is append-only (trigger raises on UPDATE/DELETE/TRUNCATE). Capture posts one `txn_id`:

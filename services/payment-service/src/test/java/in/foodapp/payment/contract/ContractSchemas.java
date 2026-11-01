@@ -84,6 +84,16 @@ public final class ContractSchemas {
         }
     }
 
+    /** True when the contract lists this service as a consumer. */
+    public static boolean consumedBy(String type, String service) {
+        for (JsonNode n : contract(type).path("x-consumers")) {
+            if (service.equals(n.asText())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     public static void assertProducedBy(String service, String type) {
         String producer = contract(type).path("x-producer").asText();
         if (!service.equals(producer)) {

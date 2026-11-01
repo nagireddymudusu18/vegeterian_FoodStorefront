@@ -22,6 +22,9 @@ export default function PartnerLayout({ children }: { children: ReactNode }) {
             Veggo Eats Partner
           </Link>
           <div className="ml-auto flex items-center gap-1">
+            <Link href="/" className="rounded-lg px-3 py-2 text-sm hover:bg-emerald-700">
+              Storefront
+            </Link>
             <NotificationBell tone="dark" />
             <button type="button" onClick={logout} className="rounded-lg px-3 py-2 text-sm hover:bg-emerald-700">
               Sign out

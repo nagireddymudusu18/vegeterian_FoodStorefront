@@ -31,7 +31,7 @@ public final class Templates {
 
     public static Message orderPlaced(long totalPaise) {
         return Message.inApp("ORDER_PLACED", "Order placed",
-                "Your order of " + rupees(totalPaise) + " is placed. Complete the payment to confirm it.");
+                "Your order of " + rupees(totalPaise) + " is placed. We will confirm it once the payment goes through.");
     }
 
     /** What the customer hears when an order reaches {@code to}; empty for statuses that say nothing new. */
@@ -83,7 +83,7 @@ public final class Templates {
     public static Message newDeliveryJob(String orderNumber, String orderId, String restaurantName) {
         String where = restaurantName == null || restaurantName.isBlank() ? "a restaurant" : restaurantName;
         return Message.inApp("NEW_JOB", "New delivery job",
-                "Pickup from " + where + " (order " + label(orderNumber, orderId) + "). Open Jobs to accept it.");
+                "Pickup from " + where + " (order " + label(orderNumber, orderId) + "). Open the Partner page to accept it.");
     }
 
     /** To the one partner who took the job. */

@@ -28,6 +28,16 @@ export function Header() {
               Admin
             </Link>
           )}
+          {status === "authed" && me?.roles?.includes("RESTAURANT") && (
+            <Link href="/restaurant" className="rounded-lg px-2 py-2 hover:bg-stone-100">
+              Kitchen
+            </Link>
+          )}
+          {status === "authed" && me?.roles?.includes("PARTNER") && (
+            <Link href="/partner" className="rounded-lg px-2 py-2 hover:bg-stone-100">
+              Deliveries
+            </Link>
+          )}
           {status === "authed" && (
             <Link href="/orders" className="rounded-lg px-2 py-2 hover:bg-stone-100">
               Orders

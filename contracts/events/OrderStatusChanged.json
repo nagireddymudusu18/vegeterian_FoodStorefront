@@ -1,9 +1,9 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "OrderStatusChanged",
-  "description": "An order moved from one status to another. fleet-service builds its delivery jobs from it, which is why orderNumber and restaurantName are included.",
+  "description": "An order moved from one status to another. fleet-service builds its delivery jobs from it, which is why orderNumber and restaurantName are included. payment-service refunds the captured payment when the order becomes CANCELLED or REJECTED_BY_MERCHANT.",
   "x-producer": "order-service",
-  "x-consumers": ["fleet-service", "notification-service"],
+  "x-consumers": ["fleet-service", "notification-service", "payment-service"],
   "type": "object",
   "additionalProperties": false,
   "required": ["orderId", "customerId", "restaurantId", "from", "to", "totalPaise", "orderNumber"],

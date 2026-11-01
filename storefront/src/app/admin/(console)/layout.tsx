@@ -67,6 +67,12 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
             <Link href="/admin/deliveries" className="rounded-lg px-3 py-2 hover:bg-stone-800">
               Deliveries
             </Link>
+            <Link href="/admin/restaurants" className="rounded-lg px-3 py-2 hover:bg-stone-800">
+              Restaurants
+            </Link>
+            <Link href="/admin/dead-letters" className="rounded-lg px-3 py-2 hover:bg-stone-800">
+              Dead letters
+            </Link>
             {isMain && (
               <Link href="/admin/team" className="rounded-lg px-3 py-2 hover:bg-stone-800">
                 Team

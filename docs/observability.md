@@ -3,7 +3,7 @@
 What you can see when something goes wrong, without attaching a debugger.
 
 ## Request ids
-Every request has an id. The edge (Caddy, or `dev-gateway.mjs` locally) assigns one if the caller sent none, the
+Every request has an id. The edge (Caddy) assigns one if the caller sent none, the
 storefront sends its own, and each service:
 
 - keeps a well-formed `X-Request-Id` (letters, digits, `.`, `_`, `-`, 8 to 64 long), otherwise makes a new one
@@ -16,14 +16,15 @@ logs of the services for that id. Feed events applied by a consumer log as `feed
 `feed-payment-1042`.
 
 ## Logs
-Text locally, with the id in each line. In production `SPRING_PROFILES_ACTIVE=json` (set in `docker-compose.prod.yml`)
-makes every line one JSON object with `service`, `level`, `message`, `logger_name` and `requestId`, ready for a log
-service. Locally, `SPRING_PROFILES_ACTIVE=json` shows the same format.
+Text by default, with the id in each line; the sandbox uses text so `smoke.mjs` can read OTPs and links, and the Ops Agent
+ships `/opt/veggo/deploy/local/*-service.log` to Cloud Logging (log `veggo`). With `SPRING_PROFILES_ACTIVE=json` (use it
+in production) every line is one JSON object with `service`, `level`, `message`, `logger_name` and `requestId`, ready
+for a log service.
 
 ## Metrics
 Each service serves Prometheus metrics at `/actuator/prometheus` (JVM, HTTP requests by URI and status, database
-pool), tagged `application=<service>`. The endpoint is open inside the private network only: the edge and the k8s
-ingress block `/actuator`, and the production compose file does not publish service ports. Scrape it from a collector on
+pool), tagged `application=<service>`. The endpoint is open inside the private network only: the edge blocks
+`/actuator`, and the VM's services listen on localhost only (only Caddy is public). Scrape it from a collector on
 the same network.
 
 Feed consumers (order-service, fleet-service, notification-service) add:

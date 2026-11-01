@@ -8,6 +8,8 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Supplier;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.event.TransactionPhase;
@@ -31,6 +33,16 @@ public class StaffStreamHub {
 
     private final Map<SseEmitter, Conn> conns = new ConcurrentHashMap<>();
     private final AtomicInteger total = new AtomicInteger();
+    private final Supplier<SseEmitter> emitterFactory;
+
+    @Autowired
+    public StaffStreamHub() {
+        this(() -> new SseEmitter(TIMEOUT_MS));
+    }
+
+    StaffStreamHub(Supplier<SseEmitter> emitterFactory) {
+        this.emitterFactory = emitterFactory;
+    }
 
     public Optional<SseEmitter> open(UUID userId, boolean admin) {
         long mine = conns.values().stream().filter(c -> c.userId().equals(userId)).count();
@@ -40,7 +52,7 @@ public class StaffStreamHub {
             }
             return Optional.empty();
         }
-        SseEmitter emitter = new SseEmitter(TIMEOUT_MS);
+        SseEmitter emitter = emitterFactory.get();
         conns.put(emitter, new Conn(emitter, userId, admin));
         Runnable cleanup = () -> {
             if (conns.remove(emitter) != null) {
@@ -78,7 +90,19 @@ public class StaffStreamHub {
         try {
             emitter.send(event);
         } catch (IOException | IllegalStateException ex) {
+            drop(emitter);
+        }
+    }
+
+    /** Forgets a connection that can no longer be written to. Never throws: one dead client must not stop the loop. */
+    private void drop(SseEmitter emitter) {
+        if (conns.remove(emitter) != null) {
+            total.decrementAndGet();
+        }
+        try {
             emitter.complete();
+        } catch (RuntimeException alreadyClosed) {
+            // the container already closed this connection (e.g. the client went away)
         }
     }
 }

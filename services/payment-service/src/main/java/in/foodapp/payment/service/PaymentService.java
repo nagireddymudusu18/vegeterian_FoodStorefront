@@ -9,6 +9,7 @@ import in.foodapp.payment.infra.gateway.GatewayRefund;
 import in.foodapp.payment.infra.gateway.PaymentGateway;
 import in.foodapp.payment.infra.gateway.PaymentRequest;
 import in.foodapp.payment.infra.gateway.RefundRequest;
+import in.foodapp.payment.persistence.ClosedOrderStore;
 import in.foodapp.payment.persistence.Payment;
 import in.foodapp.payment.persistence.PaymentRepository;
 import in.foodapp.payment.persistence.Refund;
@@ -43,15 +44,18 @@ public class PaymentService {
     private final PaymentGateway gateway;
     private final LedgerService ledger;
     private final OutboxService outbox;
+    private final ClosedOrderStore closedOrders;
     private final TransactionTemplate tx;
 
     public PaymentService(PaymentRepository payments, RefundRepository refunds, PaymentGateway gateway,
-                          LedgerService ledger, OutboxService outbox, PlatformTransactionManager txManager) {
+                          LedgerService ledger, OutboxService outbox, ClosedOrderStore closedOrders,
+                          PlatformTransactionManager txManager) {
         this.payments = payments;
         this.refunds = refunds;
         this.gateway = gateway;
         this.ledger = ledger;
         this.outbox = outbox;
+        this.closedOrders = closedOrders;
         this.tx = new TransactionTemplate(txManager);
     }
 
@@ -129,6 +133,43 @@ public class PaymentService {
         payload.put("amountPaise", payment.getAmountPaise());
         payload.put("gatewayRef", gatewayRef);
         outbox.publish("PaymentCaptured", payment.getId(), payload);
+        if (closedOrders.isClosed(payment.getOrderId())) {
+            // the order was cancelled or rejected before this capture arrived: give the money back straight away
+            refundRemaining(payment);
+        }
+        return true;
+    }
+
+    /**
+     * An order was cancelled or rejected: record it, and fully refund every captured payment of the order that is
+     * not refunded yet. Safe to repeat (the refund has a fixed idempotency key per payment). Throws if the gateway
+     * refuses, so the order feed retries the event and finally parks it for an admin.
+     */
+    public void onOrderClosed(UUID orderId, String status) {
+        closedOrders.markClosed(orderId, status);
+        for (Payment p : payments.findByOrderIdForUpdate(orderId)) {
+            refundRemaining(p);
+        }
+    }
+
+    private boolean refundRemaining(Payment payment) {
+        if (payment.getStatus() != PaymentStatus.CAPTURED) {
+            return false;
+        }
+        long remaining = payment.getAmountPaise() - refunds.sumProcessedByPaymentId(payment.getId());
+        String key = "auto:" + payment.getId();
+        if (remaining <= 0 || refunds.findByPaymentIdAndIdempotencyKey(payment.getId(), key).isPresent()) {
+            return false;
+        }
+        UUID refundId = UUID.randomUUID();
+        GatewayRefund gr = gateway.refund(new RefundRequest(refundId, payment.getId(), payment.getGatewayRef(),
+                remaining, key));
+        if (!gr.success()) {
+            throw new ApiException(HttpStatus.BAD_GATEWAY, "Gateway refund failed",
+                    gr.failureReason() == null ? "refund rejected by gateway" : gr.failureReason());
+        }
+        applyRefund(payment, refundId, remaining, key, Idempotency.refundHash(payment.getId(), remaining),
+                gr.gatewayRef());
         return true;
     }
 

@@ -21,21 +21,14 @@ Cost is roughly ₹800 to ₹1,000 a month while it runs; stop it with
 
 - From services running on GCP: the Cloud SQL connector or Cloud SQL Auth Proxy.
 - From a laptop on an open network: Cloud SQL Auth Proxy with `--gcloud-auth`.
-- On the managed work laptop the proxy's secure handshake is reset (the network inspects TLS), so use
-  `deploy/scripts/gcp-db-migrate.ps1` for data moves; it only needs HTTPS and the Windows trust store.
+- On the managed work laptop the proxy's secure handshake is reset (the network inspects TLS), so direct database
+  access is not possible from there. Move data with `gcloud sql import/export` through a private bucket (HTTPS only),
+  or inspect it through the services' own admin APIs.
 
-## Moving local data to Cloud SQL
+## Data
 
-With the local Postgres running and the local stack stopped:
-
-```
-powershell -File deploy\scripts\gcp-db-migrate.ps1
-```
-
-It needs `gcloud` signed in and `deploy/local/gcp.env`. It dumps each local database to SQL, uploads the dumps to a
-temporary private bucket, imports them as each service's own user, and compares exact row counts table by table.
-It prints `MIGRATION VERIFIED` only if they all match, then deletes the bucket and the local dumps.
-Run it only against empty databases; importing twice fails on existing tables.
+The databases hold only data created in the sandbox (the local copy was a one-off migration and no longer exists).
+Back up with Cloud SQL backups (3 nightly) before risky changes; there is nothing to migrate from a laptop.
 
 ## Sandbox VM (the whole stack runs here)
 
@@ -43,14 +36,16 @@ Run it only against empty databases; importing twice fails on existing tables.
 |---|---|
 | VM | `veggo-sandbox-vm`: e2-medium, Ubuntu 24.04, `asia-south1-a`, 20 GB, static IP `veggo-sandbox-ip` = 34.47.166.37 |
 | URL | `https://34-47-166-37.sslip.io` (sslip.io gives a free hostname; Caddy gets the certificate automatically) |
-| Runs | five services on localhost (8081 to 8085), the storefront on 3000, Caddy on 80/443, Cloud SQL Auth Proxy on 127.0.0.1:5432 |
+| Runs | six services on localhost (8081 to 8086; notification-service on 8086 is added in the repo and goes live with the next deploy), the storefront on 3000, Caddy on 80/443, Cloud SQL Auth Proxy on 127.0.0.1:5432 |
 | Service account | `veggo-sandbox-vm@veggo-eats-6110.iam.gserviceaccount.com` (Cloud SQL client, log and metric writer, read on the bucket) |
 | Artifacts | private bucket `gs://veggo-eats-6110-sandbox-artifacts`: `jars/`, `storefront.tar.gz`, `app.env` (secrets), `vm/`, `scripts/` |
 | Firewall | only `veggo-allow-web` (tcp 80 and 443). There is **no SSH**; the default SSH and RDP rules were deleted |
 
 The sandbox uses the **fake payment gateway** and **logging** SMS/email providers. Do not take real orders on it.
 Sign-in codes and verification links are written to the service logs, so read them in Cloud Logging
-(log `veggo`, filter by `OTP` or `verify`) or with `gcloud logging read 'logName:"logs/veggo"' --freshness=15m`.
+(log `veggo`) or with `gcloud logging read 'logName:"logs/veggo"' --freshness=15m`. The text is in `jsonPayload.message`
+(not `textPayload`), so filter on that or read the entries as JSON. On Windows set `[Console]::OutputEncoding` to UTF-8 and
+`$env:PYTHONUTF8=1` before running gcloud, otherwise the rupee sign (₹) is shown as `?` in your terminal (the logs are fine).
 
 ### How deploys work (no SSH)
 

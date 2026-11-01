@@ -4,8 +4,8 @@ Services are **fully independent**: separate Maven project, separate database, n
 calls another service's API. The only coupling is the contracts below (documents, not code). Each consumer writes
 its own DTOs.
 
-## Ports (container and local)
-| Service | Port | Base path via edge (Caddy :8080) |
+## Ports (on the VM; services listen on localhost only)
+| Service | Port | Base path via the edge (Caddy, port 443 on the VM) |
 |---|---|---|
 | identity-service | 8081 | `/api/identity/*` -> `/` |
 | catalog-service | 8082 | `/api/catalog/*` -> `/` |
@@ -63,7 +63,8 @@ aggregate id; ignore stale events). If the producer is down, log at WARN and ret
 the events one at a time. A failing event is retried on later polls (`FEED_MAX_ATTEMPTS`, default 5, counted in
 `feed_failure`); after that, or at once for a malformed payload, it is parked in `feed_dead_letter` (payload and
 error kept) and the cursor moves on. Handlers throw on malformed events instead of skipping them. An ADMIN lists parked
-events with `GET /admin/dead-letters` (order-service) or `GET /fleet/admin/dead-letters` (fleet-service) and calls
+events with `GET /admin/dead-letters` (order-service), `GET /fleet/admin/dead-letters` (fleet-service),
+`GET /notifications/admin/dead-letters` or `GET /payments/admin/dead-letters` and calls
 `POST .../{id}/retry` (re-applies it; stays parked with the error if it still fails) or `POST .../{id}/discard`.
 
 ### Event payloads (all fields required unless noted)
@@ -96,6 +97,7 @@ identity-service:
 
 notification-service consumes `UserContactUpdated`, `UserDeleted`, `RestaurantUpserted`, `OrderCreated`,
 `OrderStatusChanged`, `PaymentFailed`, `RefundIssued` and `DeliveryAssigned`; it publishes nothing.
+payment-service consumes `OrderStatusChanged` (CANCELLED / REJECTED_BY_MERCHANT start an automatic refund).
 
 ## Order and payment flow (no service-to-service calls)
 1. Storefront `POST /api/orders/orders` (cart lines: itemId + quantity only) -> order-service recomputes prices from

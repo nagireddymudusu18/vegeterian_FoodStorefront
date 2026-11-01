@@ -1,22 +1,26 @@
 # Storefront
 
 Next.js 15 (App Router, TypeScript strict, Tailwind CSS 4) web storefront for the India food-delivery marketplace.
-It talks **only** to the edge proxy (`NEXT_PUBLIC_API_BASE`, default `http://localhost:8080`) using the paths
-`/api/identity/*`, `/api/catalog/*`, `/api/orders/*`, `/api/payments/*` (the edge strips the prefix). See
-`../contracts/CONVENTIONS.md`.
+It talks **only** to the edge proxy (`NEXT_PUBLIC_API_BASE`, the sandbox URL in a deployed build) using the paths
+`/api/identity/*`, `/api/catalog/*`, `/api/orders/*`, `/api/payments/*`, `/api/fleet/*` and `/api/notifications/*`
+(the edge strips the prefix). See `../contracts/CONVENTIONS.md`.
 
 ## Run
 
 ```bash
-cp .env.example .env.local   # optional; defaults to http://localhost:8080
+cp .env.example .env.local   # set NEXT_PUBLIC_API_BASE to the sandbox URL to develop against it
 npm install
 npm run dev                  # http://localhost:3000
 ```
 
 Other scripts: `npm run lint`, `npm run build`, `npm start`, `npm test` (Vitest: money formatting, cart logic, order/diet helpers).
 
-The backend (identity, catalog, order, payment behind the Caddy edge on :8080) must be running for pages to load data.
-Without it the UI shows error states with a retry button.
+For pages to load data the sandbox must be running (see `../deploy/gcp/README.md`). The sandbox serves the storefront and
+the APIs from one origin, so a `npm run dev` server on `localhost:3000` calling it cross-origin will normally be blocked
+by the browser (CORS); to see real data, build and deploy. Without a backend the UI shows error states with a retry button.
+
+The deployed storefront is the `output: "standalone"` build (`node server.js`); see `../docs/getting-started.md` for how
+it is packaged and uploaded.
 
 ## Docker
 

@@ -184,7 +184,8 @@ class ConsumerContractTest {
         apply("order", event("OrderCreated", p));
 
         assertThat(kinds(customer)).containsExactly("ORDER_PLACED");
-        assertThat(inbox(customer).get(0).get("body").toString()).contains("\u20B9720.90");
+        assertThat(inbox(customer).get(0).get("body").toString()).contains("\u20B9720.90")
+                .doesNotContain("Complete the payment");
         assertThat(jdbc.queryForObject("SELECT customer_id FROM order_ref WHERE order_id = ?", UUID.class, order))
                 .isEqualTo(customer);
     }
@@ -234,6 +235,46 @@ class ConsumerContractTest {
         assertThat(jdbc.queryForObject("SELECT body FROM notification WHERE audience = 'PARTNER' AND order_id = ?",
                 String.class, order)).contains("Spice Route Kitchen").contains("FA-ABCDE-12345");
         assertThat(kinds(customer)).containsExactly("ORDER_PREPARING");
+    }
+
+    @Test
+    void theJobBroadcastIsWithdrawnOnceTheJobIsTakenOrTheOrderEnds() {
+        UUID restaurant = UUID.randomUUID();
+        for (String closing : new String[] {"RIDER_ASSIGNED", "CANCELLED", "REJECTED_BY_MERCHANT", "DELIVERED"}) {
+            UUID order = UUID.randomUUID();
+            UUID customer = UUID.randomUUID();
+            apply("order", event("OrderStatusChanged", status(order, customer, restaurant, "PREPARING")));
+            assertThat(jobBroadcasts(order)).as("broadcast before " + closing).isEqualTo(1);
+
+            apply("order", event("OrderStatusChanged", status(order, customer, restaurant, closing)));
+            assertThat(jobBroadcasts(order)).as("broadcast after " + closing).isZero();
+        }
+    }
+
+    @Test
+    void anOldClosingEventStillWithdrawsTheJobBroadcast() {
+        UUID order = UUID.randomUUID();
+        UUID customer = UUID.randomUUID();
+        UUID restaurant = UUID.randomUUID();
+        apply("order", event("OrderStatusChanged", status(order, customer, restaurant, "PREPARING")));
+        Instant old = Instant.now().minusSeconds(3 * 3600);
+        apply("order", event("OrderStatusChanged", status(order, customer, restaurant, "RIDER_ASSIGNED"), old));
+        assertThat(jobBroadcasts(order)).isZero();
+    }
+
+    @Test
+    void theJobBroadcastIsKeptWhileTheOrderIsOnlyAccepted() {
+        UUID order = UUID.randomUUID();
+        UUID customer = UUID.randomUUID();
+        UUID restaurant = UUID.randomUUID();
+        apply("order", event("OrderStatusChanged", status(order, customer, restaurant, "PREPARING")));
+        apply("order", event("OrderStatusChanged", status(order, customer, restaurant, "MERCHANT_ACCEPTED")));
+        assertThat(jobBroadcasts(order)).isEqualTo(1);
+    }
+
+    private int jobBroadcasts(UUID order) {
+        return jdbc.queryForObject("SELECT count(*) FROM notification WHERE audience = 'PARTNER' AND order_id = ?",
+                Integer.class, order);
     }
 
     @Test

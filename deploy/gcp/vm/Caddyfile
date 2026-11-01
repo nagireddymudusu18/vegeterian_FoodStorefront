@@ -10,14 +10,20 @@
 	header {
 		Strict-Transport-Security "max-age=31536000"
 		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
 		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "camera=(), microphone=(), payment=(), geolocation=(self)"
+		# Everything is same-origin (the APIs live under /api). Next.js needs inline scripts and styles. When Razorpay
+		# Checkout is switched on, add https://checkout.razorpay.com to script-src and frame-src, and https://api.razorpay.com to connect-src.
+		Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
 		-Server
 	}
 
 	@noreqid not header X-Request-Id *
 	request_header @noreqid X-Request-Id {http.request.uuid}
 
-	@internal path /api/*/internal/* /api/*/actuator/* /internal/* /actuator/*
+	# Internal feeds, health/metrics and the services' API docs are never public.
+	@internal path /api/*/internal/* /api/*/actuator/* /internal/* /actuator/* /api/*/v3/api-docs* /api/*/swagger-ui* /v3/api-docs* /swagger-ui*
 	handle @internal {
 		respond 404
 	}

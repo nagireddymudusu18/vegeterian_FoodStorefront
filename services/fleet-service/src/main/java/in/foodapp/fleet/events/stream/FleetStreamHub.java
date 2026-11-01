@@ -5,6 +5,8 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Supplier;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.event.TransactionPhase;
@@ -24,6 +26,16 @@ public class FleetStreamHub {
 
     private final Set<SseEmitter> emitters = ConcurrentHashMap.newKeySet();
     private final AtomicInteger total = new AtomicInteger();
+    private final Supplier<SseEmitter> emitterFactory;
+
+    @Autowired
+    public FleetStreamHub() {
+        this(() -> new SseEmitter(TIMEOUT_MS));
+    }
+
+    FleetStreamHub(Supplier<SseEmitter> emitterFactory) {
+        this.emitterFactory = emitterFactory;
+    }
 
     /** Opens a stream that reports once straight away; empty when the connection limit is reached. */
     public Optional<SseEmitter> open() {
@@ -31,7 +43,7 @@ public class FleetStreamHub {
             total.decrementAndGet();
             return Optional.empty();
         }
-        SseEmitter emitter = new SseEmitter(TIMEOUT_MS);
+        SseEmitter emitter = emitterFactory.get();
         emitters.add(emitter);
         Runnable cleanup = () -> {
             if (emitters.remove(emitter)) {
@@ -67,7 +79,19 @@ public class FleetStreamHub {
         try {
             emitter.send(event);
         } catch (IOException | IllegalStateException ex) {
+            drop(emitter);
+        }
+    }
+
+    /** Forgets a connection that can no longer be written to. Never throws: one dead client must not stop the loop. */
+    private void drop(SseEmitter emitter) {
+        if (emitters.remove(emitter)) {
+            total.decrementAndGet();
+        }
+        try {
             emitter.complete();
+        } catch (RuntimeException alreadyClosed) {
+            // the container already closed this connection (e.g. the client went away)
         }
     }
 }
