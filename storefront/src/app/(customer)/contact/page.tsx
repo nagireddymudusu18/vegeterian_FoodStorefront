@@ -6,7 +6,7 @@ export const metadata: Metadata = { title: "Contact us" };
 export default function ContactPage() {
   return (
     <article className="mx-auto max-w-3xl space-y-4 text-stone-800">
-      <h1 className="text-2xl font-bold">Contact us</h1>
+      <h1 className="page-title">Contact us</h1>
       <p>
         {BRAND.name} · {BRAND.legalName}
       </p>

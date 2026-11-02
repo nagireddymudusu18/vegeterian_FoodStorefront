@@ -5,7 +5,9 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { catalog, type Restaurant } from "@/lib/api";
 import { dietParam, usePrefs, certificationTier, CertBadge, OpenBadge, type DietFilter } from "@/features/catalog";
 import { formatDistance } from "@/lib/money";
-import { Empty, ErrorBox, Spinner } from "@/components/ui";
+import { Empty, ErrorBox } from "@/components/ui";
+import { RestaurantGridSkeleton } from "@/components/Skeletons";
+import { FadeInItem } from "@/components/motion";
 
 function LocationPicker() {
   const { location, setLocation } = usePrefs();
@@ -56,11 +58,18 @@ function LocationPicker() {
   };
 
   return (
-    <details className="rounded-2xl border border-stone-200 bg-white p-3 text-sm shadow-sm">
-      <summary className="cursor-pointer font-medium">
-        Delivering to: {location.label} ({location.lat.toFixed(4)}, {location.lng.toFixed(4)})
+    <details className="rounded-2xl border border-stone-200 bg-white px-4 py-3 text-sm shadow-sm">
+      <summary className="flex cursor-pointer items-center gap-2 font-medium">
+        <span aria-hidden="true">📍</span>
+        <span className="min-w-0 flex-1 truncate">
+          Delivering to <strong>{location.label}</strong>
+        </span>
+        <span className="font-semibold text-green-800 underline">Change</span>
       </summary>
       <div className="mt-3 space-y-3">
+        <p className="text-xs text-stone-600">
+          Current coordinates: {location.lat.toFixed(4)}, {location.lng.toFixed(4)}
+        </p>
         <button
           type="button"
           onClick={useMyLocation}
@@ -109,56 +118,47 @@ function LocationPicker() {
   );
 }
 
-const GRADIENTS = [
-  "from-green-400 to-emerald-600",
-  "from-amber-300 to-orange-500",
-  "from-lime-400 to-green-600",
-  "from-teal-400 to-cyan-600",
-  "from-yellow-300 to-amber-500",
+const TINTS = [
+  { bg: "bg-haldi", ink: "text-green-800" },
+  { bg: "bg-green-100", ink: "text-green-800" },
+  { bg: "bg-amber-100", ink: "text-amber-900" },
 ];
 
-function gradientFor(id: string): string {
+function tintFor(id: string) {
   let h = 0;
   for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;
-  return GRADIENTS[h % GRADIENTS.length];
+  return TINTS[h % TINTS.length];
 }
 
-const CUISINE_EMOJI: Record<string, string> = {
-  "south indian": "🥘",
-  "north indian": "🍛",
-  gujarati: "🍲",
-  vegan: "🌱",
-  chinese: "🥡",
-  italian: "🍝",
-  "street food": "🌯",
-  desserts: "🍰",
-  beverages: "🥤",
-};
-
-function cuisineEmoji(name: string): string {
-  return CUISINE_EMOJI[name.toLowerCase()] ?? "🍽️";
-}
-
-function RestaurantCard({ r }: { r: Restaurant }) {
+function RestaurantCard({ r, index }: { r: Restaurant; index: number }) {
+  const tint = tintFor(r.id);
   return (
-    <li>
+    <FadeInItem index={index}>
       <Link
         href={`/restaurants/${encodeURIComponent(r.id)}`}
-        className={`group block overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-stone-200 transition hover:-translate-y-0.5 hover:shadow-lg ${
+        className={`group block overflow-hidden rounded-3xl bg-white shadow-sm ring-1 ring-stone-200 transition hover:-translate-y-0.5 hover:shadow-lg ${
           r.open ? "" : "opacity-75"
         }`}
       >
-        <div className={`relative flex h-28 items-end bg-gradient-to-br ${gradientFor(r.id)} p-3`}>
-          <span aria-hidden="true" className="absolute right-3 top-2 text-5xl opacity-90 transition group-hover:scale-110">
-            🥗
+        <div className={`relative flex h-32 items-center justify-center overflow-hidden ${tint.bg}`}>
+          <span
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-0"
+            style={{
+              background:
+                "radial-gradient(circle at 85% 15%, rgb(255 255 255 / .55) 0 22%, transparent 23%), radial-gradient(circle at 10% 95%, rgb(255 255 255 / .35) 0 26%, transparent 27%)",
+            }}
+          />
+          <span aria-hidden="true" className={`relative text-6xl font-extrabold tracking-tight opacity-80 ${tint.ink}`}>
+            {r.name.trim().charAt(0).toUpperCase()}
           </span>
-          <span className="rounded-full bg-white/90 px-2 py-0.5 text-xs font-semibold text-stone-800">
+          <span className="absolute bottom-3 left-3 rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-ink shadow-sm">
             {formatDistance(r.distanceMeters)}
           </span>
         </div>
         <div className="space-y-2 p-4">
           <div className="flex items-start justify-between gap-2">
-            <h3 className="text-base font-bold">{r.name}</h3>
+            <h3 className="text-base font-bold leading-snug">{r.name}</h3>
             <OpenBadge open={r.open} />
           </div>
           {r.cuisine && <p className="text-sm text-stone-600">{r.cuisine}</p>}
@@ -167,15 +167,15 @@ function RestaurantCard({ r }: { r: Restaurant }) {
           </div>
         </div>
       </Link>
-    </li>
+    </FadeInItem>
   );
 }
 
-const DIET_TILES: { value: DietFilter; label: string; emoji: string; hint: string; tone: string }[] = [
-  { value: "ALL", label: "All", emoji: "🍽️", hint: "Everything", tone: "from-stone-100 to-stone-200 text-stone-800" },
-  { value: "PURE_VEG", label: "Pure Veg", emoji: "🥦", hint: "100% vegetarian", tone: "from-green-100 to-green-200 text-green-900" },
-  { value: "VEGAN", label: "Vegan", emoji: "🌱", hint: "Plant based", tone: "from-emerald-100 to-teal-200 text-emerald-900" },
-  { value: "JAIN", label: "Jain", emoji: "🙏", hint: "No onion or garlic", tone: "from-amber-100 to-orange-200 text-amber-900" },
+const DIET_CHIPS: { value: DietFilter; label: string }[] = [
+  { value: "ALL", label: "All" },
+  { value: "PURE_VEG", label: "Pure Veg" },
+  { value: "VEGAN", label: "Vegan" },
+  { value: "JAIN", label: "Jain" },
 ];
 
 type Quick = "open" | "tier1" | "tier2" | "near";
@@ -243,19 +243,24 @@ export default function HomePage() {
     <div className="space-y-8">
       <section
         aria-labelledby="hero-h"
-        className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-green-700 via-emerald-600 to-lime-500 px-5 py-8 text-white shadow-lg sm:px-10 sm:py-12"
+        className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-green-700 to-green-600 px-5 py-7 text-white shadow-md sm:px-10 sm:py-10"
       >
-        <span aria-hidden="true" className="pointer-events-none absolute -right-6 -top-6 text-[9rem] leading-none opacity-20">
-          🥬
-        </span>
-        <p className="text-sm font-semibold uppercase tracking-widest text-lime-100">Pure veg · Vegan · Jain</p>
-        <h1 id="hero-h" className="mt-2 max-w-xl text-3xl font-extrabold leading-tight sm:text-5xl">
+        <span
+          aria-hidden="true"
+          className="pointer-events-none absolute right-5 top-5 h-12 w-12 rounded-full bg-amber-500 sm:-right-8 sm:-top-10 sm:h-44 sm:w-44"
+        />
+        <span
+          aria-hidden="true"
+          className="pointer-events-none absolute -right-16 -top-20 hidden h-64 w-64 rounded-full border-[22px] border-amber-500/20 sm:block"
+        />
+        <p className="relative text-xs font-bold uppercase tracking-[0.16em] text-amber-300 sm:text-sm">Pure veg · Vegan · Jain</p>
+        <h1 id="hero-h" className="relative mt-2 max-w-xl text-4xl font-extrabold leading-[1.05] sm:text-6xl">
           Veg, on the go.
         </h1>
-        <p className="mt-3 max-w-lg text-green-50">
+        <p className="relative mt-3 max-w-md text-green-50">
           Every kitchen is checked for its veg standard, so you can order with confidence.
         </p>
-        <div className="mt-6 max-w-xl">
+        <div className="relative mt-5 max-w-xl">
           <label htmlFor="search" className="sr-only">
             Search restaurants
           </label>
@@ -265,17 +270,15 @@ export default function HomePage() {
             value={q}
             onChange={(e) => setQ(e.target.value)}
             placeholder="Search restaurants or dishes"
-            className="w-full rounded-2xl border-0 bg-white px-4 py-3.5 text-stone-900 shadow-md placeholder:text-stone-500"
+            className="w-full rounded-full border-0 bg-white px-5 py-3.5 text-ink shadow-md placeholder:text-stone-500"
           />
         </div>
       </section>
 
-      <section aria-labelledby="cat-h" className="space-y-3">
-        <h2 id="cat-h" className="text-xl font-bold">
-          What are you eating today?
-        </h2>
-        <div role="radiogroup" aria-label="Diet preference" className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          {DIET_TILES.map((t) => {
+      <section aria-label="Filters" className="space-y-3">
+        <h2 className="sr-only">Filter restaurants</h2>
+        <div role="radiogroup" aria-label="Diet preference" className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 sm:mx-0 sm:px-0">
+          {DIET_CHIPS.map((t) => {
             const active = diet === t.value;
             return (
               <button
@@ -284,24 +287,37 @@ export default function HomePage() {
                 role="radio"
                 aria-checked={active}
                 onClick={() => setDiet(t.value)}
-                className={`rounded-2xl bg-gradient-to-br ${t.tone} p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md ${
-                  active ? "ring-4 ring-green-600" : "ring-1 ring-black/5"
+                className={`shrink-0 whitespace-nowrap rounded-full px-4 py-2 text-sm font-semibold transition ${
+                  active ? "bg-ink text-white" : "bg-white text-ink ring-1 ring-stone-200 hover:bg-stone-100"
                 }`}
               >
-                <span aria-hidden="true" className="block text-3xl">
-                  {t.emoji}
-                </span>
-                <span className="mt-2 block font-bold">{t.label}</span>
-                <span className="block text-xs opacity-80">{t.hint}</span>
+                {t.label}
               </button>
             );
           })}
         </div>
 
-        {cuisines.length > 0 && (
-          <div>
-            <h3 className="mb-2 text-sm font-semibold text-stone-700">Browse by cuisine</h3>
-            <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1" role="group" aria-label="Cuisine">
+        <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0">
+          <div className="flex shrink-0 gap-2 sm:flex-wrap" role="group" aria-label="Quick filters">
+            {QUICK.map((c) => {
+              const active = quick === c.id;
+              return (
+                <button
+                  key={c.id}
+                  type="button"
+                  aria-pressed={active}
+                  onClick={() => setQuick(active ? null : c.id)}
+                  className={`shrink-0 whitespace-nowrap rounded-full px-4 py-2 text-sm font-medium transition ${
+                    active ? "bg-green-700 text-white" : "bg-white text-stone-700 ring-1 ring-stone-300 hover:bg-stone-100"
+                  }`}
+                >
+                  {c.label}
+                </button>
+              );
+            })}
+          </div>
+          {cuisines.length > 0 && (
+            <div className="flex shrink-0 gap-2 sm:flex-wrap" role="group" aria-label="Cuisine">
               {cuisines.map((c) => {
                 const active = activeCuisine === c;
                 return (
@@ -310,38 +326,16 @@ export default function HomePage() {
                     type="button"
                     aria-pressed={active}
                     onClick={() => setCuisine(active ? null : c)}
-                    className={`flex shrink-0 items-center gap-2 rounded-2xl px-4 py-2 text-sm font-semibold shadow-sm transition ${
-                      active
-                        ? "bg-gradient-to-r from-orange-500 to-amber-500 text-white"
-                        : "bg-white text-stone-800 ring-1 ring-stone-200 hover:bg-orange-50"
+                    className={`shrink-0 whitespace-nowrap rounded-full px-4 py-2 text-sm font-medium transition ${
+                      active ? "bg-amber-500 text-ink" : "bg-amber-50 text-amber-900 ring-1 ring-amber-200 hover:bg-amber-100"
                     }`}
                   >
-                    <span aria-hidden="true">{cuisineEmoji(c)}</span>
                     {c}
                   </button>
                 );
               })}
             </div>
-          </div>
-        )}
-
-        <div className="flex flex-wrap gap-2" role="group" aria-label="Quick filters">
-          {QUICK.map((c) => {
-            const active = quick === c.id;
-            return (
-              <button
-                key={c.id}
-                type="button"
-                aria-pressed={active}
-                onClick={() => setQuick(active ? null : c.id)}
-                className={`rounded-full px-4 py-1.5 text-sm font-medium transition ${
-                  active ? "bg-green-700 text-white" : "bg-white text-stone-700 ring-1 ring-stone-300 hover:bg-stone-100"
-                }`}
-              >
-                {c.label}
-              </button>
-            );
-          })}
+          )}
         </div>
       </section>
 
@@ -354,13 +348,13 @@ export default function HomePage() {
         {error ? (
           <ErrorBox error={error} onRetry={retry} />
         ) : loading && !items ? (
-          <Spinner label="Finding restaurants" />
+          <RestaurantGridSkeleton />
         ) : visible.length === 0 ? (
           <Empty>No restaurants match these filters. Try another diet, a different filter or a new location.</Empty>
         ) : (
           <ul className={`grid gap-4 sm:grid-cols-2 lg:grid-cols-3 ${loading ? "opacity-60" : ""}`}>
-            {visible.map((r) => (
-              <RestaurantCard key={r.id} r={r} />
+            {visible.map((r, i) => (
+              <RestaurantCard key={r.id} r={r} index={i} />
             ))}
           </ul>
         )}

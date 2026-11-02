@@ -39,7 +39,7 @@ function AddPassword({ onDone }: { onDone: () => void | Promise<unknown> }) {
   }
 
   return (
-    <form onSubmit={submit} className="space-y-3 rounded-xl border border-stone-200 bg-white p-4" noValidate>
+    <form onSubmit={submit} className="card space-y-3 p-4" noValidate>
       <h2 className="font-bold">Add email and password</h2>
       <p className="text-sm text-stone-600">Optional. Lets you sign in without an OTP next time.</p>
       <input
@@ -106,7 +106,7 @@ function AddPhone({ onDone }: { onDone: () => void | Promise<unknown> }) {
   };
 
   return (
-    <form onSubmit={phone ? verify : request} className="space-y-3 rounded-xl border border-stone-200 bg-white p-4" noValidate>
+    <form onSubmit={phone ? verify : request} className="card space-y-3 p-4" noValidate>
       <h2 className="font-bold">Add a mobile number</h2>
       <p className="text-sm text-stone-600">Optional. Lets you sign in with an OTP and get delivery updates.</p>
       {phone ? (
@@ -176,8 +176,8 @@ export default function ProfilePage() {
 
   return (
     <div className="mx-auto max-w-md space-y-6">
-      <h1 className="text-2xl font-bold">Your profile</h1>
-      <section className="space-y-1 rounded-xl border border-stone-200 bg-white p-4">
+      <h1 className="page-title">Your profile</h1>
+      <section className="card space-y-1 p-4">
         {me?.name && (
           <>
             <p className="text-sm text-stone-600">Name</p>

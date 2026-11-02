@@ -21,8 +21,9 @@ Read this first, then follow the links to the detailed docs.
   - **Any GCP resource is created as a sandbox first.**
   - Security issues get fixed, not just reported.
   - Keep answers concise.
-- Git state at the time of writing: one commit ("Intial Skelton_ForStorefront"), and about 158 changed or new paths
-  that are **not committed**.
+- Git state (31 Oct 2026): `develop` holds everything merged through PR #3 (fleet and GCP sandbox #1, notifications #2,
+  sandbox findings fixes #3, commit `be9145d`). The default branch on GitHub is still `master` (the initial skeleton).
+  The owner opened and merged the PRs; new work starts from a branch cut from `origin/develop`.
 
 ## 2. Architecture in one page
 
@@ -84,6 +85,10 @@ See [../contracts/CONVENTIONS.md](../contracts/CONVENTIONS.md).
    - `deploy.yml`: third-party actions pinned to commit SHAs, and `SSH_HOST_FINGERPRINT` required (the workflow was removed later).
    - k8s ingress: blocked `/internal` and `/actuator` (the manifests were later removed; the Caddy edge does this now).
    - Design-pattern self-score was about 8/10.
+   - **Security review, 31 Oct 2026:** one low finding (not yet committed, to be confirmed by CI): CI workflows used the mutable
+     tag `dorny/paths-filter@v3` and had no `permissions:` block. It is now pinned to a commit SHA and both workflows set
+     `permissions: contents: read`. No other exploitable issues were found in auth, roles, internal feeds, webhooks,
+     ownership checks, injection or the open-redirect guard.
 10. **Design improvements** (all validated):
     - Split big classes: `UserService` into `RoleResolver`, `TokenIssuer` and `UserService`; `AdminAccessService`
       into `AdminLoginService` and `AdminTeamService`.
@@ -105,7 +110,7 @@ See [../contracts/CONVENTIONS.md](../contracts/CONVENTIONS.md).
       (12 schemas now); `x-consumers` updated on the events notification reads.
     - Wired into gen-cloud-env, the GCP Caddyfile and VM scripts, CI, and the smoke test (inbox follows a whole order;
       SMS sent with the number masked). It passed the full local smoke test before the local stack was removed.
-    - **Not yet live:** nothing is deployed to GCP yet (see section 8).
+    - Deployed to the GCP sandbox and exercised in a browser on 30 Oct 2026 (sections 8 and 9).
 
 ## 4. Working from the laptop (nothing runs locally)
 
@@ -140,21 +145,23 @@ $env:MAVEN_OPTS="-Djavax.net.ssl.trustStoreType=WINDOWS-ROOT"
 - In PowerShell, comma lists in native args need quotes (`"--allow=tcp:80,tcp:443"`); do not name a parameter `$args`.
   In Windows PowerShell 5, quote SQL identifiers passed to native tools with `\"`.
 
-**Last verified test counts (30 Oct 2026):** identity 86, catalog 65, payment 41, fleet 28, order 92, notification 49
-backend tests; storefront 47 Vitest tests; `tsc`, lint and build clean; the full smoke test passed (including the
-notification checks) before the local stack was removed. GitHub CI is green on `develop`.
+**Last verified test counts (30 Oct 2026):** identity 86, catalog 65, payment 50 (after the auto-refund work), fleet 28,
+order 92, notification 49 backend tests; storefront 51 Vitest tests (2 Nov 2026, after the SEO helpers); `tsc`, lint and build clean; the full smoke test passed
+(including the notification checks) before the local stack was removed. The counts for services touched by later fixes
+(order, fleet, notification, storefront) were not re-recorded. PR #3 was committed without re-running the tests locally;
+check CI on `develop` before relying on it.
 
-## 5. Google Cloud sandbox (current state: RUNNING since 30 Oct 2026, left on at the owner's request)
+## 5. Google Cloud sandbox (current state: STOPPED on 2 Nov 2026; VM `TERMINATED`, Cloud SQL `STOPPED`; last deploy has the redesign G1 to G6)
 
 Project `veggo-eats-6110`, region `asia-south1` (Mumbai), account `nagireddy.mudusu@gmail.com`, free-credit billing
 account with a ₹1,500 monthly budget alert. Details and commands: [../deploy/gcp/README.md](../deploy/gcp/README.md).
 
 | Resource | Name / value | State now |
 |---|---|---|
-| VM | `veggo-sandbox-vm`: e2-medium, Ubuntu 24.04, zone `asia-south1-a`, 20 GB | **RUNNING** (all six services deployed) |
-| Cloud SQL | `veggo-sandbox-db`: PostgreSQL 16, db-f1-micro, six DBs and users (`identity`, `catalog`, `order`, `payment`, `fleet`, `notification`), PostGIS in `catalog`, no authorized networks | **RUNNABLE** (`activation-policy=ALWAYS`) |
-| Static IP | `veggo-sandbox-ip` = 34.47.166.37 | in use |
-| URL | `https://34-47-166-37.sslip.io` (free sslip.io host, Caddy gets the Let's Encrypt certificate) | live |
+| VM | `veggo-sandbox-vm`: e2-medium, Ubuntu 24.04, zone `asia-south1-a`, 20 GB | **TERMINATED** (storefront with the G1 to G6 redesign is in the bucket; the six jars are unchanged from 30 Oct) |
+| Cloud SQL | `veggo-sandbox-db`: PostgreSQL 16, db-f1-micro, six DBs and users (`identity`, `catalog`, `order`, `payment`, `fleet`, `notification`), PostGIS in `catalog`, no authorized networks | **STOPPED** (`activation-policy=NEVER`) |
+| Static IP | `veggo-sandbox-ip` = 34.47.166.37 | reserved (small charge while the VM is stopped) |
+| URL | `https://34-47-166-37.sslip.io` (free sslip.io host, Caddy gets the Let's Encrypt certificate) | down while the VM is stopped; after a start the first minutes show 502s (about 8 to 10 minutes until all APIs answer) |
 | Service account | `veggo-sandbox-vm@veggo-eats-6110.iam.gserviceaccount.com` | Cloud SQL client, log and metric writer, read on the bucket |
 | Bucket | `gs://veggo-eats-6110-sandbox-artifacts` (private): `jars/`, `storefront.tar.gz`, `app.env`, `vm/`, `scripts/` | holds the deploy artifacts and secrets file |
 | Firewall | `veggo-allow-web` (tcp 80 and 443, tag `veggo-web`) | default SSH and RDP rules were deleted, so there is **no SSH** |
@@ -196,7 +203,7 @@ gcloud sql instances patch veggo-sandbox-db --activation-policy=NEVER --project=
 ```
 **Remove everything:** delete the VM, the address `veggo-sandbox-ip`, the bucket and the Cloud SQL instance.
 
-**Cost while running:** roughly ₹2,000 to ₹2,500 a month (VM about $25, Cloud SQL about ₹800 to ₹1,000). While stopped
+**Cost while running:** roughly ₹70 to ₹85 a day, or ₹2,000 to ₹2,500 a month (VM about $25, Cloud SQL about ₹800 to ₹1,000). While stopped
 you still pay a little for the disk, the reserved IP, Cloud SQL storage and the bucket.
 
 **gcloud on this laptop** needs a session helper because the corporate network breaks its TLS: run
@@ -247,13 +254,17 @@ Common env vars (see `deploy/gcp/vm/run-service.sh` for exactly what each servic
   Existing users get no email/SMS contact until they verify again (identity only publishes on change).
 - The Dockerfiles run only in CI (image build), never in a deployment. The GitHub CI workflows have passed on every run.
 - The browser UI for the optional emailed admin code.
+- Findings 6 to 8 (notification lifecycle, header links, admin restaurants and dead-letter pages) are deployed but not checked in a browser.
 - Account deletion's effect inside notification-service (erasure of contacts and inbox) was not checked on the cloud.
 - The IAM roles on the VM service account were bound but not audited.
 - Real Razorpay, SMS and email providers (none connected).
 
 ## 9. Remaining work (suggested order)
 
-**Now (agreed 30 Oct 2026): fix the findings from the full sandbox test below, then return to the parked enhancements.**
+**Now (agreed 30 Oct 2026): fix the findings from the full sandbox test below one at a time, then return to the parked
+enhancements.** Status on 31 Oct 2026: findings 1 to 9 are fixed and merged to `develop` (PR #3); 10 and 11 are not started.
+The sandbox was started again on 2 Nov 2026 to deploy and test the storefront (see the F items below). Still to do: check findings 6 to 8
+in a browser.
 
 **Sandbox test, 30 Oct 2026 (all six services deployed and exercised in a browser; QA data is still in the sandbox):**
 Worked: browsing and filters, cart, guest OTP checkout, fake payment, live status, public tracking, email register / verify /
@@ -262,55 +273,143 @@ online/accept/pick-up/deliver with wrong and right delivery code, cancel, reject
 whole notification path (inbox, bell, SMS and email logs with masked recipients, UserContactUpdated for a late-verified
 email, role broadcast and per-user read marks, zero dead letters, role checks).
 Findings, most important first:
-1. ~~**No refund when a paid order is cancelled or rejected**~~ **FIXED (30 Oct 2026, not yet committed).** payment-service now
+1. ~~**No refund when a paid order is cancelled or rejected**~~ **FIXED (30 Oct 2026, merged in PR #3).** payment-service now
    consumes order-service's feed (`OrderFeedConsumer`, `closed_order` + feed cursor/dead-letter tables in migration V3,
    `ORDER_FEED_URL`/`ORDER_FEED_KEY` in `run-service.sh`, ADMIN dead letters at `/payments/admin/dead-letters`). A cancel or
    reject refunds the captured payment (key `auto:<paymentId>`) and order-service moves the order to `REFUNDED`; a capture
    that arrives after the order closed is refunded at once. Tested: 9 new payment tests (50 in the service, all green) and the
    sandbox for both customer cancel and restaurant reject (order `REFUNDED`, payment `REFUNDED`, refund notification).
    Still open: no admin UI for manual refunds (API only).
-2. ~~**Partner screen: "Available orders" stays empty after going Online**~~ **FIXED (not yet deployed or committed).** The
+2. ~~**Partner screen: "Available orders" stays empty after going Online**~~ **FIXED and deployed (merged in PR #3).** The
    dashboard now reloads when the online flag changes and ignores the 409 a pool request gets right after going offline; the
    stale error banner is cleared after a successful refresh. Tested in a browser (local storefront against the sandbox):
    pool appears in under a second. One harmless 409 may still show in the console on the offline switch (finding 9).
-3. ~~**Live-stream push errors**~~ **FIXED and deployed (not committed).** Cause: `StaffStreamHub`/`FleetStreamHub` called
+3. ~~**Live-stream push errors**~~ **FIXED and deployed (merged in PR #3).** Cause: `StaffStreamHub`/`FleetStreamHub` called
    `emitter.complete()` in their error handler, which itself throws once the container has closed the connection, aborting the
    heartbeat loop. Dead connections are now dropped without throwing. Tests: `StaffStreamHubTest`, `FleetStreamHubTest`; no
    scheduler errors in the sandbox after dropping streams.
 4. ~~**Logs show `?` for the rupee sign**~~ **NOT A BUG.** The VM logs contain the real ₹ (U+20B9); the `?` came from the
    Windows terminal when reading with gcloud. Documented in `deploy/gcp/README.md` (set a UTF-8 console).
-5. ~~**Public API docs / security headers**~~ **FIXED and deployed (not committed).** The Caddyfile now returns 404 for every
+5. ~~**Public API docs / security headers**~~ **FIXED and deployed (merged in PR #3).** The Caddyfile now returns 404 for every
    service's `/v3/api-docs` and `/swagger-ui*` and sends CSP, X-Frame-Options and Permissions-Policy. Checked in a browser: no
    CSP violations on home, login and track. When Razorpay Checkout is enabled, extend the CSP (note in the Caddyfile).
-6. **Notification copy and lifecycle:** "Order placed: complete the payment" is shown after payment already happened; the
-   "New delivery job" broadcast stays in other riders' inboxes after the job is taken (up to 2 h); it says "Open Jobs" but
-   there is no Jobs tab.
-7. **Navigation:** no header link to the kitchen (`/restaurant`) or partner (`/partner`) area; the customer header shows an
-   "Admin" link to a non-admin session (leads to the admin sign-in page).
-8. **Admin gaps:** no UI to grant the restaurant-owner role or link a restaurant to its owner (API only); the dashboard tile
-   "Orders, restaurants and users" is a placeholder; the `delivery_module` flag text still says the fleet service is not
-   built; dead letters have no UI or alerting.
-9. **Console noise:** a 401 right after every sign-in, 404 for `/fleet/me` before partner registration, aborted
-   mark-read and stream requests on navigation.
+6. ~~**Notification copy and lifecycle**~~ **FIXED and deployed, not yet checked in a browser (PR #3).** notification-service
+   now withdraws the rider "New delivery job" broadcasts once a job is taken or closed, and the copy was made clearer.
+7. ~~**Navigation**~~ **FIXED and deployed, not yet checked in a browser (PR #3).** The header has Kitchen and Deliveries
+   links for the matching roles, and the "Admin" link no longer shows to a non-admin session.
+8. ~~**Admin gaps**~~ **FIXED and deployed, not yet checked in a browser (PR #3).** New admin restaurants and dead-letter
+   pages in the console (restaurant owner link, dead-letter retry/discard), and the `delivery_module` flag text was corrected
+   (identity migration V6). Still open: no alerting on dead letters, and no admin UI for manual refunds.
+9. ~~**Console noise**~~ **FIXED, checked locally (PR #3).** The storefront refreshes the token before it expires, so the 401
+   after sign-in is gone; the partner pool ignores the 409 on the offline switch. Harmless 404s for `/fleet/me` before partner
+   registration and aborted requests on navigation may remain.
 10. **Product questions:** non-veg items are listed under the "All" diet at a "Tier 2 segregated" kitchen; legal pages are
     still drafts with placeholders.
 11. **Ops:** on the first boot after a deploy identity crash-looped until the installer replaced `app.env` (old units start
     first; harmless but noisy); existing users still need a contact backfill for email/SMS.
+12. **Order page stops following a cancelled order (found 2 Nov 2026).** `isTerminal` in `features/orders/orders.ts` treats
+    `CANCELLED`, `REJECTED` and `MERCHANT_REJECTED` as final, so the live stream and polling stop. Since auto-refunds, a paid
+    order moves on to `REFUNDED` about a minute later, but the page still shows "Cancelled" until you reload. Fix idea: keep
+    following these statuses for a few minutes (or until `REFUNDED`) before stopping. Not fixed yet; needs a decision on how long to follow.
+13. **Mobile header overflows (found 2 Nov 2026) - FIXED locally in G2.** At phone width the logo and "Track order" wrapped onto two lines and the Cart
+    button was cut off, so the page scrolled sideways. The new header fits at 390 to 446px; checked on 8 pages.
 QA data left in the sandbox: users `qa.admin`, `qa.admin2` (admin removed), `qa.owner`, `qa.customer` (@example.com),
-phone users 9811100001 (customer) and 9811100002 (rider), about ten orders, and the restaurant `Spice Route Kitchen` now
+phone users 9811100001 (customer), 9811100002 (rider) and 9811100077 (guest "QA Deploy Check", 2 Nov), about eleven orders
+(the 2 Nov one was cancelled and auto-refunded), and the restaurant `Spice Route Kitchen` now
 linked to `qa.owner@example.com`. The main admin is back on `nagireddy.mudusu@gmail.com`.
 
 **Parked enhancements (to plan later), roughly by value:**
 - **A. Automated GCP deploy:** one script or a GitHub Action (Workload Identity Federation) that builds the jars and
   storefront, uploads them to the bucket and resets the VM, replacing the manual steps in `getting-started.md`.
-- **B. Notifications go-live:** create the `notification` database and user, deploy, backfill contacts for users who
+- **B. Notifications go-live:** backfill contacts for users who
   registered before this release, real email sender and (after DLT) SMS behind `EmailSender` / `SmsSender`, per-user
-  notification preferences, possibly push.
-- **C. Hardening:** Secret Manager instead of the bucket, CSP headers, Cloud SQL private IP and IAM logins, uptime checks
-  and alerts, a tested database restore.
+  notification preferences, possibly push. (The service itself is already deployed to the sandbox.)
+- **C. Hardening:** Secret Manager instead of the bucket, Cloud SQL private IP and IAM logins, uptime checks
+  and alerts, a tested database restore. (Browser security headers and the public API docs block are done.)
 - **D. Product:** OpenStreetMap restaurant import and maps, Razorpay once approved.
 - **E. Repo and branches:** make `develop` the default branch (it is still `master`, the initial skeleton), delete the
-  merged `feature/*` branches.
+  merged `feature/*` branches (`feature/fleet-admin-gcp-sandbox`, `feature/notifications`, `feature/sandbox-findings-fixes`).
+- **G. Storefront redesign (started 2 Nov 2026).** Owner's decisions: a fresh visual identity applied everywhere, taking the **mix**
+  of concept A's palette ("Haldi & Leaf": cream `#FBF6EA`, ink `#1F2A1D`, leaf green `#1B5E3A`, turmeric `#E8A317`, haldi tint
+  `#F3E6C4`) with concept B's type (Plus Jakarta Sans), and restaurants uploading their own photos (needs catalog-service
+  changes, image storage and a CSP `img-src` change; not designed yet). The two concepts are in `design-preview.html` (Copilot
+  session files folder, not in the repo). All text pairs pass WCAG AA. Built in small steps, each checked on desktop and phone width:
+  - **G1 tokens and font: DONE locally.** `globals.css` remaps the Tailwind `stone`, `green`, `emerald` and `amber` scales to the palette
+    (so existing classes re-skin without renames) and adds `cream`, `ink`, `leaf`, `turmeric`, `haldi`. Font from the
+    `@fontsource-variable/plus-jakarta-sans` package (OFL, bundled files, no build-time network; works with CSP `font-src 'self'`).
+    Theme colour, OG image and body word spacing updated.
+  - **G2 logo and header: DONE locally.** `components/Logo.tsx` (leaf-on-square mark with turmeric motion lines), `app/icon.svg`
+    (favicon), new header (`shell/Header.tsx`): logo, links, cart pill (`shell/CartSheet.tsx`), SVG bell, account button, and on
+    phones a Menu sheet for the links. Fixes finding 13 (no sideways scroll on 8 checked pages at 446px).
+  - **G3 home: DONE locally.** Shorter leaf-green hero with a turmeric sun (a small dot on phones), diet, quick-filter and cuisine
+    chips in compact scrollable rows, the location shown as a place name with "Change", monogram tiles on restaurant cards (calm
+    tints, no photo needed), Tier 2 badge in turmeric.
+  - **G4 restaurant and menu: DONE locally.** Calmer dish rows (quiet "Contains ..." line instead of red chips), filled-green
+    quantity stepper, chip diet filter, lighter header, sticky bar "N items · ₹X · View cart".
+  - Deployed to the sandbox on 2 Nov 2026 (G1 to G4; not committed). Live check: Plus Jakarta Sans loads under the Caddy CSP, cream background,
+    four restaurants with monogram tiles, no console or CSP errors, no sideways scroll at 446px on home and the menu, and the new cart bar works.
+  - **G5 cart and checkout: DONE and deployed.** Shared styles in `globals.css` (`card`, `btn-primary`, `btn-secondary`, `page-title`) replace the
+    seven copies of the old gradient button (cart sheet, cart, checkout, OTP login, login, forgot and reset password). Cart: filled-green
+    steppers, one summary card with the checkout button, "Clear cart" as a text link. Checkout: one card holding the lines and the
+    estimated total, a card for the guest sign-in.
+  - **G6 orders, tracking, profile: DONE and deployed** (except one local-only tweak: the order number on the orders list no longer wraps
+    mid-hyphen). New `features/orders/StatusPill.tsx` (green delivered, turmeric in progress, red failed or closed) used on the orders
+    list, order detail and tracking. Order detail: pill status, turmeric-highlighted delivery OTP box, card sections. Tracking: leaf header
+    with the turmeric dot. Profile and the other customer pages: cards and the heavier page title. Verified on the sandbox with a real guest
+    order (OTP from Cloud Logging, placed, cancelled; QA phone 9811100088) at 390px and 1280px: no sideways scroll, no console or CSP
+    errors. A scripted Edge run (`playwright-core` in a temp folder, not in the repo) is the reliable way to screenshot at phone width; the
+    embedded VS Code browser tab is narrow and its screenshots go stale when the tab is hidden.
+  - Next: the partner, kitchen and admin screens still use their own headers (colours follow the palette already); dish photos once
+    restaurant uploads exist.
+- **F. Free building blocks (research, 31 Oct 2026; verify each vendor page before adopting).** Agreed order, one step at a
+  time with validation after each: SEO built-ins, then sonner, then motion, then shadcn/ui. Status:
+  - **F1 SEO built-ins: DONE and deployed to the sandbox on 2 Nov 2026 (not committed).** Root metadata (`metadataBase`, canonical,
+    Open Graph, Twitter), `robots.ts`, `sitemap.ts` (public pages only), generated `opengraph-image.tsx`, Organization and
+    WebSite JSON-LD typed with `schema-dts` (dev dependency), `lib/seo.ts` (+ tests; 51 storefront tests now). Indexing is
+    **off by default**: without `NEXT_PUBLIC_ALLOW_INDEXING=true` (build-time) every page is `noindex` and `robots.txt`
+    disallows all, so the sandbox stays hidden. In production set it plus `NEXT_PUBLIC_SITE_URL`; private areas always get
+    `X-Robots-Tag: noindex` (`next.config.mjs`; keep its list in step with `PRIVATE_PREFIXES` in `lib/seo.ts`). Verified with
+    `next start` in both modes (robots, sitemap, headers, meta, OG PNG). Not done yet: per-restaurant pages need a server
+    component with `generateMetadata`, `Restaurant` JSON-LD and sitemap entries; the restaurant page is client-only and
+    the catalog list needs coordinates, so this needs a design decision.
+  - **F2 sonner toasts: DONE and deployed to the sandbox on 2 Nov 2026 (not committed).** `components/Toaster.tsx` mounted in
+    `Providers`; toasts for add to cart (with a "View cart" action), starting a new cart, remove from cart (with Undo), clear
+    cart and order cancelled. Form and API errors still use the inline `ErrorBox` (`role="alert"`) on purpose. Verified in
+    a browser against a mock catalog API (toast, View cart navigation, remove and undo), plus tsc, lint, tests and build.
+  - **F3 motion: DONE and deployed to the sandbox on 2 Nov 2026 (not committed).** `components/motion.tsx`: `MotionProvider`
+    (`LazyMotion` + `domAnimation`, strict, so use `m` from that file, never `motion.*`; `MotionConfig reducedMotion="user"`)
+    mounted in `Providers`, and a `FadeInItem` list item. Used for the restaurant cards, the menu rows (staggered fade-up),
+    the cart badge pop in the header and the pulse on the current order step (`Stepper`). Verified in a browser against a
+    mock API: stagger and badge animation run, no console errors, reduced-motion skips the movement, first-load JS unchanged
+    at 103 kB. Do not add a CSS `transition` class that covers `transform` to an animated element.
+  - **F4 shadcn/ui: DONE and deployed to the sandbox on 2 Nov 2026 (not committed).** Set up by hand (not the CLI) so nothing else
+    in the styling changed: `components.json` (aliases point `ui` at `src/components/shadcn/`, because `components/ui.tsx`
+    already exists), `lib/utils.ts` (`cn`), `tw-animate-css` imported in `globals.css`, and the `Skeleton` and `Sheet`
+    primitives (Radix via the unified `radix-ui` package; plain stone/green colours, no theme variables). New:
+    `components/Skeletons.tsx` (restaurant grid, menu and rows placeholders with `role="status"`, used on home, the
+    restaurant page and orders) and `shell/CartSheet.tsx` (the header Cart opens a slide-over mini cart with +/-,
+    remove, subtotal and checkout; on `/cart` and `/checkout` it stays a plain link; toasts are dismissed when it opens).
+    Verified in a browser against a mock API: skeleton then content, sheet open/close (Escape, focus returns to the
+    trigger), quantity changes, checkout navigation, no console errors; tsc, lint, 51 tests and build clean. Further shadcn
+    components can be added with `npx shadcn@latest add <name>` (it may also install `lucide-react`). Not done: restyle
+    `ConfirmDialog` with the Radix Dialog.
+  - **Sandbox check of F1 to F4 (2 Nov 2026):** `robots.txt` is `Disallow: /`, every response has `X-Robots-Tag: noindex`, sitemap and OG image
+    return 200, no CSP violations with the Caddy policy (sonner, motion and Radix work under `style-src 'unsafe-inline'`). Real flow on
+    the live site: skeletons then four restaurants, add to cart toast, cart sheet, guest OTP checkout, fake payment, live stepper,
+    cancel toast, auto-refund to `REFUNDED` (see finding 12 for the page not updating by itself).
+    Deploy recipe used for a storefront-only change: build with `NEXT_PUBLIC_API_BASE=https://34-47-166-37.sslip.io`, package
+    `.next/standalone/*` plus `.next/static` into `storefront.tar.gz`, upload it to the bucket, start the VM (or reset it if running).
+  - Payment: `razorpay/razorpay-java` (MIT) server-side, hosted `checkout.js` on the client, a unique-constraint
+    `webhook_events` table on `X-Razorpay-Event-Id`, own idempotency keys for orders and refunds, and a reconciliation job.
+    Razorpay charges per transaction. Skip `react-razorpay` (stale).
+  - Email: Spring Mail + Thymeleaf with the Brevo (about 300/day) or Resend (3,000/month, 100/day) free tier; Mailpit and
+    GreenMail for dev and tests. Amazon SES is paid. SMS has no real free tier in India (DLT registration plus a paid wallet),
+    so use email OTP first, register on DLT in parallel, then MSG91 over REST. WhatsApp utility templates are the cheaper phase 2.
+  - SEO: Next.js built-ins (metadata, `sitemap.ts`, `robots.ts`, `opengraph-image`) plus `google/schema-dts` for
+    Restaurant/Menu JSON-LD. No SEO runtime dependency needed.
+  - UI: shadcn/ui + `radix-ui` + `tw-animate-css`, `motion`, `sonner`, `embla-carousel-react`, `react-hook-form` + `zod` +
+    `input-otp`, and `maplibre-gl` with `@vis.gl/react-maplibre` on OpenFreeMap tiles (check its terms). Avoid `react-leaflet`
+    (Hippocratic license), `next-sitemap` and OSM's public tile servers for production.
 
 **Older list (still valid):**
 1. **Buy `veggoeats.in`**, point DNS, and fill the legal details in `storefront/src/lib/brand.ts`.
@@ -318,15 +417,16 @@ linked to `qa.owner@example.com`. The main admin is back on `nagireddy.mudusu@gm
    registered) and an email sender (implement `SmsSender` / `EmailSender` in notification-service and select with
    `SMS_PROVIDER` / `EMAIL_PROVIDER`; identity-service has its own senders for OTPs and links). Then `SEED_DEMO_DATA=false`.
 3. **Maps and restaurant data:** import restaurants from OpenStreetMap and add maps to the storefront.
-4. **Notifications follow-ups:** deploy to the GCP sandbox (see section 8), a backfill of contacts for users who
+4. **Notifications follow-ups:** a backfill of contacts for users who
    registered before this release, per-user notification preferences, and web/mobile push if wanted.
-5. **Hardening not done yet:** browser security headers (CSP), Secret Manager instead of the bucket for secrets,
+5. **Hardening not done yet:** Secret Manager instead of the bucket for secrets,
    Cloud SQL private IP and IAM logins, monitoring and alerts, backup restore test, Cloudflare and rate limiting.
+   (CSP and related browser security headers are done in the Caddyfile.)
 6. **Before running more than one instance of any service:** move rate limits and live-stream state to shared storage
    (Redis or Postgres `LISTEN/NOTIFY`).
 7. **Production GCP setup:** bigger database tier with high availability and point-in-time recovery, then repeat the
    sandbox steps for production.
-8. Commit the pending changes (owner does this).
+8. Findings 10 (product questions) and 11 (ops) from the sandbox test.
 
 ## 10. Tips for the next agent
 
@@ -337,3 +437,5 @@ linked to `qa.owner@example.com`. The main admin is back on `nagireddy.mudusu@gm
 - Validate each step (CI tests, then the smoke test after a sandbox deploy) before the next one.
 - Ask the owner before creating paid cloud resources, and create them as a sandbox first.
 - Never print, log or commit anything from `deploy/local/*.env`.
+- After every enhancement or fix, update this file in the same change: finding and enhancement status, test counts,
+  sandbox state (running or stopped) and the "Not verified" list. The owner asked for this on 31 Oct 2026.

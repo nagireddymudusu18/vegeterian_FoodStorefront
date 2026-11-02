@@ -56,7 +56,7 @@ export function CertBadge({ level }: { level: Restaurant["kitchenCertificationLe
   }
   if (tier === 2) {
     return (
-      <span className="rounded-full bg-sky-100 px-2 py-0.5 text-xs font-semibold text-sky-800">
+      <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-900">
         Tier 2: segregated veg kitchen
       </span>
     );

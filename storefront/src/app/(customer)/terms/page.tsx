@@ -6,7 +6,7 @@ export const metadata: Metadata = { title: "Terms of service" };
 export default function TermsPage() {
   return (
     <article className="mx-auto max-w-3xl space-y-4 text-stone-800">
-      <h1 className="text-2xl font-bold">Terms of service</h1>
+      <h1 className="page-title">Terms of service</h1>
       <p className="text-sm text-stone-500">Last updated: {BRAND.updated}. Draft: have it reviewed by a lawyer before launch.</p>
       <p>
         {BRAND.name} is operated by {BRAND.legalName}, {BRAND.address}. By using the site you accept these terms.

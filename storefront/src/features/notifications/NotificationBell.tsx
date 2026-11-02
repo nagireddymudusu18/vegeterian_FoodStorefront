@@ -34,7 +34,7 @@ export function NotificationBell({ tone = "light" }: { tone?: "light" | "dark" }
 
   const badge = badgeLabel(unread);
   const button =
-    tone === "dark" ? "rounded-lg px-3 py-2 text-sm hover:bg-white/15" : "rounded-lg px-2 py-2 hover:bg-stone-100";
+    tone === "dark" ? "rounded-lg px-3 py-2 text-sm hover:bg-white/15" : "inline-flex h-10 w-10 items-center justify-center rounded-full text-ink hover:bg-stone-100";
 
   return (
     <div ref={box} className="relative">
@@ -46,7 +46,10 @@ export function NotificationBell({ tone = "light" }: { tone?: "light" | "dark" }
         aria-haspopup="true"
         onClick={() => setOpen((o) => !o)}
       >
-        <span aria-hidden="true">🔔</span>
+        <svg aria-hidden="true" viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M6 9a6 6 0 1 1 12 0c0 5 2 6.500 2 6.500H4S6 14 6 9z" />
+          <path d="M10 19a2 2 0 0 0 4 0" />
+        </svg>
         {badge && (
           <span
             className="absolute -right-0.5 -top-0.5 inline-flex min-w-5 items-center justify-center rounded-full bg-red-600 px-1 text-xs font-semibold text-white"

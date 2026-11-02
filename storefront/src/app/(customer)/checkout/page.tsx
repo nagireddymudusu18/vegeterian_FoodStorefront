@@ -155,42 +155,45 @@ export default function CheckoutPage() {
   const total = attempt.current?.order?.totalPaise ?? placed?.totalPaise;
 
   return (
-    <div className="space-y-4">
-      <h1 className="text-2xl font-bold">Checkout</h1>
-      <p className="text-stone-700">
-        Order from <span className="font-semibold">{cart.restaurantName}</span>
-      </p>
+    <div className="space-y-5">
+      <div>
+        <h1 className="page-title">Checkout</h1>
+        <p className="mt-1 text-stone-700">
+          Order from <span className="font-semibold">{cart.restaurantName}</span>
+        </p>
+      </div>
 
-      <ul className="divide-y divide-stone-200 rounded-xl border border-stone-200 bg-white">
-        {cart.lines.map((l) => (
-          <li key={l.itemId} className="flex justify-between p-3 text-sm">
-            <span>
-              {l.quantity} x {l.name}
-            </span>
-            <span>{formatPaise(l.pricePaise * l.quantity)}</span>
-          </li>
-        ))}
-      </ul>
-
-      <div className="rounded-xl border border-stone-200 bg-white p-4 text-sm">
-        <div className="flex justify-between font-semibold">
-          <span>Estimated subtotal</span>
-          <span>{formatPaise(estimatedSubtotalPaise(cart))}</span>
-        </div>
-        {total !== undefined ? (
-          <div className="mt-2 flex justify-between text-base font-bold">
-            <span>Total confirmed by server</span>
-            <span>{formatPaise(total)}</span>
+      <div className="card overflow-hidden">
+        <ul className="divide-y divide-stone-200">
+          {cart.lines.map((l) => (
+            <li key={l.itemId} className="flex justify-between gap-3 p-4 text-sm">
+              <span>
+                <span className="font-bold">{l.quantity} x</span> {l.name}
+              </span>
+              <span className="font-semibold">{formatPaise(l.pricePaise * l.quantity)}</span>
+            </li>
+          ))}
+        </ul>
+        <div className="space-y-1 border-t border-stone-200 bg-stone-50 p-4 text-sm">
+          <div className="flex justify-between font-semibold">
+            <span>Estimated subtotal</span>
+            <span>{formatPaise(estimatedSubtotalPaise(cart))}</span>
           </div>
-        ) : (
-          <p className="mt-2 text-stone-600">
-            The final total (including tax and delivery) is calculated by the server when you place the order.
-          </p>
-        )}
+          {total !== undefined ? (
+            <div className="flex justify-between text-base font-bold">
+              <span>Total confirmed by server</span>
+              <span>{formatPaise(total)}</span>
+            </div>
+          ) : (
+            <p className="text-stone-600">
+              The final total (including tax and delivery) is calculated by the server when you place the order.
+            </p>
+          )}
+        </div>
       </div>
 
       {guest && (
-        <section aria-labelledby="guest-title" className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-stone-200">
+        <section aria-labelledby="guest-title" className="card p-5">
           <h2 id="guest-title" className="text-lg font-bold">
             Continue as guest
           </h2>
@@ -236,7 +239,7 @@ export default function CheckoutPage() {
           type="button"
           onClick={place}
           disabled={working}
-          className="w-full rounded-xl bg-green-700 px-4 py-3 text-lg font-semibold text-white hover:bg-green-800 disabled:opacity-60"
+          className="btn-primary w-full text-lg"
         >
           {phase === "creating" ? "Placing order..." : phase === "paying" ? "Processing payment..." : "Place order and pay"}
         </button>
