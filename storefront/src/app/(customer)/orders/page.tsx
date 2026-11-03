@@ -4,9 +4,10 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { orders, type Order } from "@/lib/api";
 import { formatPaise } from "@/lib/money";
-import { isFailure, statusLabel } from "@/features/orders";
+import { StatusPill } from "@/features/orders";
 import { useRequireAuth } from "@/features/auth";
 import { Empty, ErrorBox, Spinner } from "@/components/ui";
+import { RowsSkeleton } from "@/components/Skeletons";
 
 export default function OrdersPage() {
   const auth = useRequireAuth();
@@ -31,11 +32,11 @@ export default function OrdersPage() {
 
   if (!authed) return <Spinner label="Loading orders" />;
   if (error) return <ErrorBox error={error} onRetry={() => setNonce((n) => n + 1)} />;
-  if (!list) return <Spinner label="Loading orders" />;
+  if (!list) return <RowsSkeleton label="Loading orders" />;
 
   return (
-    <div className="space-y-4">
-      <h1 className="text-2xl font-bold">Your orders</h1>
+    <div className="space-y-5">
+      <h1 className="page-title">Your orders</h1>
       {list.length === 0 ? (
         <Empty>
           <p className="mb-3">You have not placed any orders yet.</p>
@@ -49,17 +50,17 @@ export default function OrdersPage() {
             <li key={o.id}>
               <Link
                 href={`/orders/${encodeURIComponent(o.id)}`}
-                className="flex items-center justify-between gap-3 rounded-xl border border-stone-200 bg-white p-4 hover:shadow-md"
+                className="card flex items-center justify-between gap-3 p-4 transition hover:-translate-y-0.5 hover:shadow-md"
               >
-                <div>
-                  <p className="font-semibold">
-                    {o.restaurantName ?? "Order"} <span className="font-normal text-stone-500">#{o.orderNumber ?? o.id.slice(0, 8)}</span>
+                <div className="min-w-0">
+                  <p className="font-bold leading-snug">
+                    {o.restaurantName ?? "Order"} <span className="whitespace-nowrap font-normal text-stone-500">#{o.orderNumber ?? o.id.slice(0, 8)}</span>
                   </p>
                   {o.createdAt && <p className="text-sm text-stone-600">{new Date(o.createdAt).toLocaleString("en-IN")}</p>}
                 </div>
-                <div className="text-right">
-                  <p className="font-semibold">{formatPaise(o.totalPaise)}</p>
-                  <p className={`text-sm ${isFailure(o.status) ? "text-red-700" : "text-green-800"}`}>{statusLabel(o.status)}</p>
+                <div className="flex shrink-0 flex-col items-end gap-1.5">
+                  <p className="font-bold">{formatPaise(o.totalPaise)}</p>
+                  <StatusPill status={o.status} />
                 </div>
               </Link>
             </li>

@@ -44,7 +44,7 @@ export default function NotificationsPage() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-3">
-        <h1 className="text-2xl font-bold">Notifications</h1>
+        <h1 className="page-title">Notifications</h1>
         {inbox.unread > 0 && (
           <button
             type="button"

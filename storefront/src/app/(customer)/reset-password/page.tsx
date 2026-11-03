@@ -32,7 +32,7 @@ export default function ResetPasswordPage() {
 
   return (
     <div className="mx-auto max-w-md space-y-5">
-      <h1 className="text-center text-2xl font-bold">Choose a new password</h1>
+      <h1 className="page-title text-center">Choose a new password</h1>
       <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-stone-200">
         {done ? (
           <div role="status" className="space-y-3 text-center">
@@ -61,7 +61,7 @@ export default function ResetPasswordPage() {
             <button
               type="submit"
               disabled={busy}
-              className="w-full rounded-xl bg-gradient-to-r from-green-600 to-emerald-600 px-4 py-3 font-semibold text-white shadow-sm disabled:opacity-60"
+              className="btn-primary w-full"
             >
               {busy ? "Saving..." : "Change password"}
             </button>

@@ -6,7 +6,7 @@ export const metadata: Metadata = { title: "Cancellation and refunds" };
 export default function RefundsPage() {
   return (
     <article className="mx-auto max-w-3xl space-y-4 text-stone-800">
-      <h1 className="text-2xl font-bold">Cancellation and refund policy</h1>
+      <h1 className="page-title">Cancellation and refund policy</h1>
       <p className="text-sm text-stone-500">Last updated: {BRAND.updated}. Draft: confirm the rules match the live flow before launch.</p>
       <h2 className="text-lg font-bold">Cancelling</h2>
       <p>

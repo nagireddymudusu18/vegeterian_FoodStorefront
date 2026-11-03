@@ -1,16 +1,103 @@
 @import "tailwindcss";
+@import "tw-animate-css";
+
+/*
+  Veggo Eats identity: "Haldi & Leaf" palette with Plus Jakarta Sans.
+  The existing stone, green, emerald and amber utilities are remapped here, so every page picks up the
+  palette without renaming classes. New code can use the semantic names (cream, ink, leaf, turmeric, haldi).
+  Contrast was checked against WCAG AA: stone-500 and darker, and white on green-600 and darker, all pass.
+*/
+@theme {
+  --font-sans: "Plus Jakarta Sans Variable", ui-sans-serif, system-ui, sans-serif;
+
+  --color-cream: #fbf6ea;
+  --color-ink: #1f2a1d;
+  --color-leaf: #1b5e3a;
+  --color-turmeric: #e8a317;
+  --color-haldi: #f3e6c4;
+
+  /* neutrals: warm paper, olive ink */
+  --color-stone-50: #fbf6ea;
+  --color-stone-100: #f4ecd8;
+  --color-stone-200: #e7dec8;
+  --color-stone-300: #d6caac;
+  --color-stone-400: #8a9484;
+  --color-stone-500: #68735f;
+  --color-stone-600: #5b6657;
+  --color-stone-700: #434e40;
+  --color-stone-800: #2d382b;
+  --color-stone-900: #1f2a1d;
+
+  /* leaf green (green and emerald share one scale) */
+  --color-green-50: #f1f8f2;
+  --color-green-100: #e3f1e6;
+  --color-green-200: #c6e3cd;
+  --color-green-300: #9ccda8;
+  --color-green-400: #5fa874;
+  --color-green-500: #34885a;
+  --color-green-600: #24764a;
+  --color-green-700: #1b5e3a;
+  --color-green-800: #144a2d;
+  --color-green-900: #0f3a23;
+  --color-emerald-50: #f1f8f2;
+  --color-emerald-100: #e3f1e6;
+  --color-emerald-200: #c6e3cd;
+  --color-emerald-300: #9ccda8;
+  --color-emerald-400: #5fa874;
+  --color-emerald-500: #34885a;
+  --color-emerald-600: #24764a;
+  --color-emerald-700: #1b5e3a;
+  --color-emerald-800: #144a2d;
+  --color-emerald-900: #0f3a23;
+
+  /* turmeric */
+  --color-amber-50: #fff8e6;
+  --color-amber-100: #fcefc7;
+  --color-amber-200: #f8e0a0;
+  --color-amber-300: #f2c968;
+  --color-amber-400: #ecb53a;
+  --color-amber-500: #e8a317;
+  --color-amber-600: #c98712;
+  --color-amber-700: #a56a0e;
+  --color-amber-800: #8a4b0b;
+  --color-amber-900: #6b3a08;
+}
 
 :root {
   color-scheme: light;
 }
 
 body {
-  background: #fafaf9;
-  color: #1c1917;
+  background: var(--color-cream);
+  color: var(--color-ink);
+  word-spacing: 0.04em;
+}
+
+h1,
+h2,
+h3 {
+  letter-spacing: -0.02em;
+}
+
+/* Shared building blocks, so pages do not each carry their own long class strings. */
+@utility card {
+  @apply rounded-2xl bg-white shadow-sm ring-1 ring-stone-200;
+}
+
+@utility btn-primary {
+  @apply inline-flex items-center justify-center rounded-xl bg-green-700 px-4 py-3 text-center font-semibold text-white shadow-sm transition hover:bg-green-800 disabled:opacity-60;
+}
+
+@utility btn-secondary {
+  @apply inline-flex items-center justify-center rounded-xl border border-stone-300 bg-white px-4 py-3 text-center font-semibold text-ink transition hover:bg-stone-100 disabled:opacity-60;
+}
+
+@utility page-title {
+  @apply text-3xl font-extrabold tracking-tight text-ink;
 }
 
 :focus-visible {
-  outline: 2px solid #15803d;
+  outline: 2px solid var(--color-leaf);
   outline-offset: 2px;
 }
 
