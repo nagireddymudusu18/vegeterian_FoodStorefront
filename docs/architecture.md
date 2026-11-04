@@ -8,15 +8,15 @@ the only coupling is the written contract in [`contracts/CONVENTIONS.md`](../con
 ```
                      Browser
                         |
-                 Caddy edge :8080      /internal/** is never routed
-        +---------------+---------------+---------------+
-        |               |               |               |
-   identity :8081  catalog :8082   order :8083    payment :8084      storefront :3000
-        |               |               |               |
-   identity-db     catalog-db       order-db       payment-db
-   (Postgres)      (PostGIS)       (Postgres)      (Postgres)
+               Caddy edge :443 (HTTPS)     /internal/** is never routed
+        +---------------+---------------+---------------+---------------+---------------+
+        |               |               |               |               |               |
+   identity :8081  catalog :8082   order :8083    payment :8084    fleet :8085  notification :8086     storefront :3000
+        |               |               |               |               |               |
+   identity-db     catalog-db       order-db       payment-db       fleet-db     notification-db      (Cloud SQL, one
+   (Postgres)      (PostGIS)       (Postgres)      (Postgres)      (Postgres)      (Postgres)         database each)
 
-   catalog --(pull feed)--> order <--(pull feed)-- payment
+   catalog --(pull feed)--> order <--(pull feed)-- payment      fleet --> order       notification <-- all five feeds
 ```
 
 ## How services share data without calling each other
@@ -46,6 +46,12 @@ one writes an order-event row and an outbox event.
 Staff access to orders (restaurant owners) is decided from `ownerUserId`, which catalog-service publishes in
 `RestaurantUpserted` and order-service stores in its restaurant replica.
 
+## Notifications
+notification-service (:8086, own `notification` database) is a pure consumer: it polls the identity, catalog, order,
+payment and fleet feeds and turns events into an in-app inbox plus queued email and SMS. It learns a person's verified
+phone and email from identity's `UserContactUpdated` event, **encrypted** with a key shared only by those two services,
+so no outbox or feed carries a plain contact. Details: [services/notification-service.md](services/notification-service.md).
+
 ## Conventions
 - Money is `long` paise, IDs are UUIDs, timestamps are UTC ISO-8601, errors are RFC 7807 problem+json.
 - All configuration comes from environment variables. Dev-only defaults live in `application-local.yml` (identity) or
@@ -69,10 +75,10 @@ The storefront groups code by feature under `storefront/src/features/` (`auth`, 
 
 ## Repository map
 ```
-services/      four Spring Boot services (each is a standalone Maven project)
+services/      six Spring Boot services (each is a standalone Maven project)
 storefront/    Next.js web app
 contracts/     cross-service contract documents
-deploy/        compose (local), k8s (other clouds), scripts (dev key generation)
+deploy/        gcp (sandbox VM files and runbook), scripts (cloud secrets generator, smoke test)
 docs/          this documentation
 .github/       path-filtered CI workflows
 ```

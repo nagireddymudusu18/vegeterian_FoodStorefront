@@ -6,16 +6,19 @@ on:
   pull_request:
     paths: ["services/**", ".github/workflows/ci-services.yml"]
 
+permissions:
+  contents: read
+
 jobs:
   build:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        service: [identity-service, catalog-service, order-service, payment-service, fleet-service]
+        service: [identity-service, catalog-service, order-service, payment-service, fleet-service, notification-service]
     steps:
       - uses: actions/checkout@v4
-      - uses: dorny/paths-filter@v3
+      - uses: dorny/paths-filter@15192bc058cc28a13dbf6cde61f19e18988b7af6 # v3
         id: changes
         with:
           filters: |

@@ -160,8 +160,14 @@ class PaymentEventHandlerIntegrationTest extends AbstractIntegrationTest {
         UUID id = newOrder();
         handler.handle(event("SomethingElse", id, Map.of()));
         handler.handle(captured(UUID.randomUUID(), 1));
-        handler.handle(new FeedEvent(EVENT_IDS.incrementAndGet(), "PaymentCaptured", id, Instant.now(),
-                om.createObjectNode())); // malformed: skipped, not thrown
         assertThat(status(id)).isEqualTo(OrderStatus.CREATED);
+    }
+
+    @Test
+    void aMalformedEventThrowsSoThePollerCanParkIt() {
+        UUID id = newOrder();
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> handler.handle(new FeedEvent(
+                        EVENT_IDS.incrementAndGet(), "PaymentCaptured", id, Instant.now(), om.createObjectNode())))
+                .isInstanceOf(MalformedEventException.class);
     }
 }

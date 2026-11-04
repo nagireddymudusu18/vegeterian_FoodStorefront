@@ -18,6 +18,7 @@ public record AppProperties(
             String paymentKey,
             String fleetUrl,
             String fleetKey,
-            int batchSize) {
+            int batchSize,
+            int maxAttempts) {
     }
 }

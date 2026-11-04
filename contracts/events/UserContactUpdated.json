@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "UserContactUpdated",
+  "description": "A user's VERIFIED phone and/or email changed. The values are encrypted (AES-256-GCM, 12-byte IV prepended, base64) with CONTACT_EVENT_KEY, a key shared only by identity-service and notification-service, so the outbox and the feed never hold a plaintext phone or email. A field that is absent did not change.",
+  "x-producer": "identity-service",
+  "x-consumers": ["notification-service"],
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["userId"],
+  "anyOf": [
+    { "required": ["phoneEnc"] },
+    { "required": ["emailEnc"] }
+  ],
+  "properties": {
+    "userId": { "type": "string", "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$" },
+    "phoneEnc": { "type": "string", "pattern": "^[A-Za-z0-9+/]{20,}={0,2}$" },
+    "emailEnc": { "type": "string", "pattern": "^[A-Za-z0-9+/]{20,}={0,2}$" }
+  },
+  "examples": [
+    {
+      "userId": "66666666-6666-4666-8666-666666666666",
+      "phoneEnc": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8gISIj"
+    }
+  ]
+}

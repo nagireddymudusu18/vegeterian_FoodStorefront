@@ -34,21 +34,17 @@ public class CatalogEventHandler {
         this.items = items;
     }
 
+    /** A malformed payload throws {@link MalformedEventException}; the poller parks the event in feed_dead_letter. */
     @Transactional
     public void handle(FeedEvent event) {
         if (event.type() == null) {
             return;
         }
-        try {
-            switch (event.type()) {
-                case "RestaurantUpserted" -> onRestaurantUpserted(event);
-                case "MenuItemUpserted" -> onMenuItemUpserted(event);
-                case "MenuItemAvailabilityChanged" -> onAvailabilityChanged(event);
-                default -> log.debug("Ignoring catalog event type {}", event.type());
-            }
-        } catch (MalformedEventException e) {
-            log.warn("Skipping malformed catalog event id={} type={}: {}", event.id(), event.type(),
-                    e.getMessage());
+        switch (event.type()) {
+            case "RestaurantUpserted" -> onRestaurantUpserted(event);
+            case "MenuItemUpserted" -> onMenuItemUpserted(event);
+            case "MenuItemAvailabilityChanged" -> onAvailabilityChanged(event);
+            default -> log.debug("Ignoring catalog event type {}", event.type());
         }
     }
 

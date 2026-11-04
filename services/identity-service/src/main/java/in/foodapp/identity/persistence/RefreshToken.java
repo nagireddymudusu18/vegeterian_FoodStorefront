@@ -35,6 +35,9 @@ public class RefreshToken {
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
+    @Column(name = "admin_session", nullable = false)
+    private boolean adminSession;
+
     protected RefreshToken() {
     }
 
@@ -85,5 +88,13 @@ public class RefreshToken {
 
     public Instant getCreatedAt() {
         return createdAt;
+    }
+
+    public boolean isAdminSession() {
+        return adminSession;
+    }
+
+    public void setAdminSession(boolean adminSession) {
+        this.adminSession = adminSession;
     }
 }

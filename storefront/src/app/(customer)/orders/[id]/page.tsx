@@ -3,8 +3,9 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
 import { orders, errorMessage, type Order } from "@/lib/api";
-import { Stepper, canCancel, isFailure, isTerminal, statusLabel, useOrderStream } from "@/features/orders";
+import { Stepper, StatusPill, canCancel, isFailure, isFinal, isTerminal, statusLabel, useKeepFollowing, useOrderStream } from "@/features/orders";
 import { formatPaise } from "@/lib/money";
 import { useRequireAuth } from "@/features/auth";
 import { useFlag } from "@/features/flags";
@@ -27,19 +28,20 @@ export default function OrderPage() {
 
   const status = order?.status;
   const terminal = status ? isTerminal(status) : false;
+  const following = useKeepFollowing(status);
   const liveOn = useFlag("live_order_updates");
   const statusRef = useRef<string | undefined>(undefined);
   useEffect(() => {
     statusRef.current = status;
   });
 
-  const live = useOrderStream(id, authed && !terminal && liveOn, (s) => {
+  const live = useOrderStream(id, authed && following && liveOn, (s) => {
     if (s !== statusRef.current) setNonce((n) => n + 1);
   });
   const pollMs = live ? POLL_LIVE_MS : POLL_MS;
 
   useEffect(() => {
-    if (!authed || terminal) return;
+    if (!authed || !following) return;
     let stop = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
     const ctrl = new AbortController();
@@ -51,7 +53,7 @@ export default function OrderPage() {
         setOrder(o);
         setError(null);
         setLoading(false);
-        if (isTerminal(o.status)) return; // stop polling once the order is final
+        if (isFinal(o.status)) return; // stop polling once the order is final
       } catch (e) {
         if (stop || (e instanceof DOMException && e.name === "AbortError")) return;
         setError(e);
@@ -66,7 +68,7 @@ export default function OrderPage() {
       ctrl.abort();
       if (timer) clearTimeout(timer);
     };
-  }, [id, authed, terminal, nonce, pollMs]);
+  }, [id, authed, following, nonce, pollMs]);
 
   const doCancel = useCallback(async () => {
     setCancelling(true);
@@ -74,6 +76,7 @@ export default function OrderPage() {
     try {
       await orders.cancel(id);
       setConfirmCancel(false);
+      toast.success("Order cancelled.");
       setNonce((n) => n + 1);
     } catch (e) {
       setConfirmCancel(false);
@@ -95,7 +98,7 @@ export default function OrderPage() {
         &larr; All orders
       </Link>
       <header>
-        <h1 className="text-2xl font-bold">Order {order.orderNumber ?? order.id.slice(0, 8)}</h1>
+        <h1 className="page-title">Order {order.orderNumber ?? order.id.slice(0, 8)}</h1>
         {order.orderNumber && (
           <p className="mt-1 text-xs text-stone-600">
             Keep this number. You can track the order any time at{" "}
@@ -105,9 +108,9 @@ export default function OrderPage() {
             , without signing in.
           </p>
         )}
-        <p className="mt-1 text-sm text-stone-600" aria-live="polite">
-          Status: <span className="font-semibold">{statusLabel(order.status)}</span>
-          {!terminal && (live ? " (live)" : " (updating every 3 seconds)")}
+        <p className="mt-2 flex flex-wrap items-center gap-2 text-sm text-stone-600" aria-live="polite">
+          <span>Status:</span> <StatusPill status={order.status} />
+          {following && !isFinal(order.status) && <span>{live ? "(live)" : "(updating every 3 seconds)"}</span>}
         </p>
       </header>
 
@@ -118,9 +121,9 @@ export default function OrderPage() {
       )}
 
       {order.deliveryOtp && !terminal && (
-        <div className="rounded-xl border-2 border-green-700 bg-green-50 p-4 text-center">
-          <p className="text-sm text-green-900">Share this delivery OTP with your rider</p>
-          <p className="mt-1 text-4xl font-bold tracking-[0.3em] text-green-900" aria-label={`Delivery OTP ${order.deliveryOtp.split("").join(" ")}`}>
+        <div className="rounded-2xl border-2 border-amber-500 bg-amber-50 p-4 text-center">
+          <p className="text-sm font-medium text-amber-900">Share this delivery OTP with your rider</p>
+          <p className="mt-1 text-4xl font-extrabold tracking-[0.3em] text-amber-900" aria-label={`Delivery OTP ${order.deliveryOtp.split("").join(" ")}`}>
             {order.deliveryOtp}
           </p>
         </div>
@@ -131,12 +134,12 @@ export default function OrderPage() {
           This order is {statusLabel(order.status).toLowerCase()}.
         </div>
       ) : (
-        <section aria-label="Progress" className="rounded-xl border border-stone-200 bg-white p-4">
+        <section aria-label="Progress" className="card p-4">
           <Stepper status={order.status} />
         </section>
       )}
 
-      <section className="rounded-xl border border-stone-200 bg-white p-4" aria-labelledby="sum-h">
+      <section className="card p-4" aria-labelledby="sum-h">
         <h2 id="sum-h" className="mb-2 font-semibold">
           Bill (confirmed by server)
         </h2>

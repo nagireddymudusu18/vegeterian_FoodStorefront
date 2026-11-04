@@ -47,7 +47,7 @@ export default function PartnerHome() {
 }
 
 function Card({ children }: { children: React.ReactNode }) {
-  return <div className="space-y-3 rounded-2xl bg-white p-6 shadow-sm ring-1 ring-stone-200">{children}</div>;
+  return <div className="card space-y-3 p-6">{children}</div>;
 }
 
 function Enroll({ onDone }: { onDone: () => Promise<void> }) {
@@ -67,7 +67,7 @@ function Enroll({ onDone }: { onDone: () => Promise<void> }) {
   }
   return (
     <Card>
-      <h1 className="text-xl font-bold">Deliver with FoodApp</h1>
+      <h1 className="text-2xl font-extrabold tracking-tight">Deliver with Veggo Eats</h1>
       <p className="text-sm text-stone-700">
         Your account needs a verified phone number. Sign in with your phone and OTP, then join as a delivery partner.
       </p>
@@ -104,7 +104,7 @@ function Profile({ onDone }: { onDone: (p: Partner) => void }) {
   const input = "w-full rounded-lg border border-stone-300 px-3 py-2";
   return (
     <Card>
-      <h1 className="text-xl font-bold">Your delivery profile</h1>
+      <h1 className="text-2xl font-extrabold tracking-tight">Your delivery profile</h1>
       <form onSubmit={submit} className="space-y-3">
         <label className="block text-sm font-medium">
           Name
@@ -138,9 +138,17 @@ function Dashboard({ partner, onPartner }: { partner: Partner; onPartner: (p: Pa
 
   const refresh = useCallback(async () => {
     try {
-      const [m, p] = await Promise.all([fleetApi.mine(), onlineRef.current ? fleetApi.pool() : Promise.resolve([])]);
+      // the partner may have just gone offline (409): then there is simply no pool
+      const poolRequest = onlineRef.current
+        ? fleetApi.pool().catch((e: { status?: number }) => {
+            if (e?.status === 409) return [] as Delivery[];
+            throw e;
+          })
+        : Promise.resolve([] as Delivery[]);
+      const [m, p] = await Promise.all([fleetApi.mine(), poolRequest]);
       setMine(m);
       setPool(p);
+      setError(null);
       onPartner(await fleetApi.me());
     } catch (e) {
       setError(e);
@@ -153,14 +161,16 @@ function Dashboard({ partner, onPartner }: { partner: Partner; onPartner: (p: Pa
     void refresh();
     const t = setInterval(() => void refresh(), live ? POLL_LIVE_MS : POLL_DOWN_MS);
     return () => clearInterval(t);
-  }, [refresh, live]);
+    // `online` is a dependency so going Online loads the pool at once (refresh reads the flag through a ref that is
+    // only current after the re-render)
+  }, [refresh, live, online]);
 
-  async function run(key: string, fn: () => Promise<unknown>) {
+  async function run(key: string, fn: () => Promise<unknown>, reload = true) {
     setBusy(key);
     setError(null);
     try {
       await fn();
-      await refresh();
+      if (reload) await refresh();
     } catch (e) {
       setError(e);
     } finally {
@@ -173,7 +183,7 @@ function Dashboard({ partner, onPartner }: { partner: Partner; onPartner: (p: Pa
       <Card>
         <div className="flex items-center gap-3">
           <div>
-            <h1 className="text-xl font-bold">{partner.name}</h1>
+            <h1 className="text-2xl font-extrabold tracking-tight">{partner.name}</h1>
             <p className="text-sm text-stone-600">
               {partner.vehicle} · {partner.activeDeliveries} active
             </p>
@@ -183,7 +193,17 @@ function Dashboard({ partner, onPartner }: { partner: Partner; onPartner: (p: Pa
             role="switch"
             aria-checked={online}
             disabled={busy === "online"}
-            onClick={() => run("online", async () => onPartner(await fleetApi.setOnline(!online)))}
+            onClick={() =>
+              run(
+                "online",
+                async () => {
+                  const next = await fleetApi.setOnline(!online);
+                  onlineRef.current = next.online;
+                  onPartner(next);
+                },
+                false,
+              )
+            }
             className={`ml-auto rounded-full px-4 py-2 text-sm font-semibold text-white ${
               online ? "bg-emerald-700" : "bg-stone-500"
             }`}

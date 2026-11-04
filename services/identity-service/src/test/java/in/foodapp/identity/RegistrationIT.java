@@ -12,6 +12,10 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import in.foodapp.identity.infra.email.EmailSender;
 import in.foodapp.identity.infra.sms.SmsSender;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.util.Base64;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -90,6 +94,70 @@ class RegistrationIT {
     CapturingSmsSender sms;
     @Autowired
     CapturingEmailSender mail;
+    @Autowired
+    org.springframework.jdbc.core.JdbcTemplate jdbc;
+
+    /** UserContactUpdated events for a user, with the contact decrypted the way notification-service does. */
+    private List<Map<String, String>> contactEvents(String userId) throws Exception {
+        byte[] key = MessageDigest.getInstance("SHA-256")
+                .digest("dev-only-contact-event-key".getBytes(StandardCharsets.UTF_8));
+        List<String> payloads = jdbc.queryForList("SELECT payload::text FROM outbox WHERE type = 'UserContactUpdated' "
+                + "AND aggregate_id = ?::uuid ORDER BY id", String.class, userId);
+        List<Map<String, String>> out = new java.util.ArrayList<>();
+        for (String json : payloads) {
+            JsonNode p = mapper.readTree(json);
+            Map<String, String> row = new java.util.HashMap<>();
+            for (String field : new String[] {"phoneEnc", "emailEnc"}) {
+                if (p.has(field)) {
+                    byte[] data = Base64.getDecoder().decode(p.get(field).asText());
+                    javax.crypto.Cipher c = javax.crypto.Cipher.getInstance("AES/GCM/NoPadding");
+                    c.init(javax.crypto.Cipher.DECRYPT_MODE, new javax.crypto.spec.SecretKeySpec(key, "AES"),
+                            new javax.crypto.spec.GCMParameterSpec(128, data, 0, 12));
+                    row.put(field, new String(c.doFinal(data, 12, data.length - 12), StandardCharsets.UTF_8));
+                }
+            }
+            out.add(row);
+        }
+        return out;
+    }
+
+    @Test
+    void verifiedEmailAndPhoneArePublishedEncryptedButUnverifiedEmailIsNot() throws Exception {
+        String email = email();
+        register(email, "Sup3rSecret").andExpect(status().isAccepted());
+        String userId = jdbc.queryForObject("SELECT aggregate_id::text FROM outbox WHERE type = 'UserRegistered' "
+                + "ORDER BY id DESC LIMIT 1", String.class);
+        assertTrue(contactEvents(userId).isEmpty(), "an unverified email must not be published");
+
+        JsonNode verified = body(send("/auth/email/verify", Map.of("token", tokenFromMail(email), "password", "Sup3rSecret"))
+                .andExpect(status().isOk()));
+        assertEquals(List.of(Map.of("emailEnc", email.toLowerCase())), contactEvents(userId));
+        String raw = jdbc.queryForObject("SELECT payload::text FROM outbox WHERE type = 'UserContactUpdated' "
+                + "AND aggregate_id = ?::uuid", String.class, userId);
+        assertTrue(!raw.toLowerCase().contains("example.com"), "the outbox must not hold the plain email");
+
+        String auth = "Bearer " + verified.get("accessToken").asText();
+        String phone = "9877700011";
+        mvc.perform(post("/me/phone/request").header("Authorization", auth).contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(Map.of("phone", phone)))).andExpect(status().isAccepted());
+        mvc.perform(post("/me/phone/verify").header("Authorization", auth).contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(Map.of("phone", phone, "code", sms.lastCodeByPhone.get("+91" + phone)))))
+                .andExpect(status().isNoContent());
+        assertEquals(List.of(Map.of("emailEnc", email.toLowerCase()), Map.of("phoneEnc", "+91" + phone)),
+                contactEvents(userId));
+    }
+
+    @Test
+    void aNewPhoneAccountPublishesItsPhone() throws Exception {
+        String phone = "9822233344";
+        send("/auth/otp/request", Map.of("phone", phone)).andExpect(status().isAccepted());
+        String code = sms.lastCodeByPhone.get("+91" + phone);
+        assertNotNull(code);
+        send("/auth/otp/verify", Map.of("phone", phone, "code", code, "consent", CONSENT)).andExpect(status().isOk());
+        String userId = jdbc.queryForObject("SELECT aggregate_id::text FROM outbox WHERE type = 'UserRegistered' "
+                + "ORDER BY id DESC LIMIT 1", String.class);
+        assertEquals(List.of(Map.of("phoneEnc", "+91" + phone)), contactEvents(userId));
+    }
 
     private static final Map<String, Object> CONSENT =
             Map.of("purpose", "TERMS_AND_PRIVACY", "version", "v1", "granted", true);

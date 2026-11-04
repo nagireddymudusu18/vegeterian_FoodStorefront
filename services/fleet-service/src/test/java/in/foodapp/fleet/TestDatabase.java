@@ -13,15 +13,15 @@ import org.testcontainers.utility.DockerImageName;
  * (admin JDBC URL of a running Postgres, e.g. jdbc:postgresql://127.0.0.1:5432/postgres, with TEST_DB_USER and
  * TEST_DB_PASSWORD) a throwaway database is created there instead and dropped when the JVM exits.
  */
-final class TestDatabase {
+public final class TestDatabase {
 
-    record Conn(String url, String user, String password) {
+    public record Conn(String url, String user, String password) {
     }
 
     private TestDatabase() {
     }
 
-    static Conn start(String name, boolean postgis) {
+    public static Conn start(String name, boolean postgis) {
         String admin = System.getenv("TEST_DB_URL");
         return admin != null && !admin.isBlank() ? external(admin, name, postgis) : container(name, postgis);
     }

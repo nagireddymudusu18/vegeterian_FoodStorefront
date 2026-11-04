@@ -55,6 +55,7 @@ public abstract class AbstractIntegrationTest {
         r.add("app.internal-feed-key", () -> FEED_KEY);
         r.add("app.razorpay.webhook-secret", () -> WEBHOOK_SECRET);
         r.add("app.gateway", () -> "fake");
+        r.add("app.allow-fake-gateway", () -> "true");
     }
 
     @Autowired

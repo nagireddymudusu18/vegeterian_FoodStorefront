@@ -34,11 +34,19 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info
+        include: health,info,prometheus
   endpoint:
     health:
       probes:
         enabled: true
+  metrics:
+    tags:
+      application: ${spring.application.name}
+
+logging:
+  pattern:
+    # the request id (see RequestIdFilter) is in every log line written while a request is served
+    level: "%5p [%X{requestId:-}]"
 
 app:
   jwt-public-key-pem: ${JWT_PUBLIC_KEY_PEM:}
@@ -53,3 +61,5 @@ app:
     fleet-url: ${FLEET_FEED_URL:http://localhost:8085}
     fleet-key: ${FLEET_FEED_KEY:}
     batch-size: 100
+    # An event that keeps failing is parked in feed_dead_letter after this many attempts (one attempt per poll).
+    max-attempts: ${FEED_MAX_ATTEMPTS:5}

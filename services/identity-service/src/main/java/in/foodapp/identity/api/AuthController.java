@@ -1,11 +1,14 @@
 package in.foodapp.identity.api;
 
+import in.foodapp.identity.service.AdminLoginService;
+import in.foodapp.identity.service.AdminTeamService;
 import in.foodapp.identity.service.AuthRateLimiter;
 import in.foodapp.identity.service.CredentialService;
 import in.foodapp.identity.service.FeatureFlagService;
 import in.foodapp.identity.service.OtpService;
 import in.foodapp.identity.service.PhoneNormalizer;
 import in.foodapp.identity.service.RefreshTokenService;
+import in.foodapp.identity.service.TokenIssuer;
 import in.foodapp.identity.service.UserService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
@@ -29,10 +32,14 @@ public class AuthController {
     private final CredentialService credentials;
     private final AuthRateLimiter limiter;
     private final FeatureFlagService flags;
+    private final AdminLoginService adminLogin;
+    private final AdminTeamService adminTeam;
+    private final TokenIssuer tokenIssuer;
 
     public AuthController(OtpService otp, PhoneNormalizer phones, UserService users,
                           RefreshTokenService refreshTokens, CredentialService credentials,
-                          AuthRateLimiter limiter, FeatureFlagService flags) {
+                          AuthRateLimiter limiter, FeatureFlagService flags, AdminLoginService adminLogin,
+                          AdminTeamService adminTeam, TokenIssuer tokenIssuer) {
         this.otp = otp;
         this.phones = phones;
         this.users = users;
@@ -40,6 +47,9 @@ public class AuthController {
         this.credentials = credentials;
         this.limiter = limiter;
         this.flags = flags;
+        this.adminLogin = adminLogin;
+        this.adminTeam = adminTeam;
+        this.tokenIssuer = tokenIssuer;
     }
 
     @PostMapping("/otp/request")
@@ -111,6 +121,29 @@ public class AuthController {
         return credentials.login(body);
     }
 
+    /** Email + password only. Returns tokens, or a challengeId when an emailed code is also required. */
+    @PostMapping("/admin/login")
+    public Dtos.AdminLoginResponse adminLogin(@Valid @RequestBody Dtos.LoginRequest body,
+                                              HttpServletRequest request) {
+        throttle(request, "admin-login", 10);
+        return adminLogin.login(body);
+    }
+
+    @PostMapping("/admin/login/verify")
+    public Dtos.TokenResponse adminLoginVerify(@Valid @RequestBody Dtos.AdminCodeRequest body,
+                                               HttpServletRequest request) {
+        throttle(request, "admin-code", 10);
+        return adminLogin.verifyCode(body.challengeId(), body.code());
+    }
+
+    @PostMapping("/admin/invite/accept")
+    public ResponseEntity<Void> acceptAdminInvite(@Valid @RequestBody Dtos.AcceptInviteRequest body,
+                                                  HttpServletRequest request) {
+        throttle(request, "admin-accept", 10);
+        adminTeam.accept(body);
+        return ResponseEntity.noContent().build();
+    }
+
     private void throttle(HttpServletRequest request, String bucket, int maxPerMinute) {
         if (!limiter.allow(bucket + ":" + request.getRemoteAddr(), maxPerMinute, 60_000,
                 System.currentTimeMillis())) {
@@ -121,7 +154,7 @@ public class AuthController {
     @PostMapping("/refresh")
     public Dtos.TokenResponse refresh(@Valid @RequestBody Dtos.RefreshRequest body) {
         RefreshTokenService.Issued issued = refreshTokens.rotate(body.refreshToken());
-        return users.tokenResponse(issued.user(), issued.rawToken());
+        return tokenIssuer.forRefresh(issued);
     }
 
     @PostMapping("/logout")

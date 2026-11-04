@@ -12,6 +12,26 @@ import org.springframework.http.MediaType;
 
 class InternalFeedIntegrationTest extends AbstractIntegrationTest {
 
+    @org.springframework.beans.factory.annotation.Autowired
+    in.foodapp.order.events.outbox.OutboxService outbox;
+    @org.springframework.beans.factory.annotation.Autowired
+    org.springframework.transaction.PlatformTransactionManager txManager;
+
+    @Test
+    void outboxRefusesEventsThatBreakTheirContract() {
+        var tx = new org.springframework.transaction.support.TransactionTemplate(txManager);
+        UUID id = UUID.randomUUID();
+        // required fields missing
+        org.junit.jupiter.api.Assertions.assertThrows(AssertionError.class, () -> tx.executeWithoutResult(
+                s -> outbox.append("OrderCreated", id, java.util.Map.of("orderId", id.toString()))));
+        // an event type with no contract
+        org.junit.jupiter.api.Assertions.assertThrows(AssertionError.class, () -> tx.executeWithoutResult(
+                s -> outbox.append("NoSuchEvent", id, java.util.Map.of("orderId", id.toString()))));
+        // another service's event
+        org.junit.jupiter.api.Assertions.assertThrows(AssertionError.class, () -> tx.executeWithoutResult(
+                s -> outbox.append("UserDeleted", id, java.util.Map.of("userId", id.toString()))));
+    }
+
     private void createOrders(int n) throws Exception {
         UUID r = seedRestaurant(true);
         UUID item = seedItem(r, 1000, true);

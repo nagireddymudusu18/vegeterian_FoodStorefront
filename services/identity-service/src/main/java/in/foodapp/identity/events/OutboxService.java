@@ -7,6 +7,7 @@ import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowCallbackHandler;
 import org.springframework.stereotype.Service;
@@ -24,10 +25,12 @@ public class OutboxService {
 
     private final JdbcTemplate jdbc;
     private final ObjectMapper mapper;
+    private final ObjectProvider<OutboxValidator> validators;
 
-    public OutboxService(JdbcTemplate jdbc, ObjectMapper mapper) {
+    public OutboxService(JdbcTemplate jdbc, ObjectMapper mapper, ObjectProvider<OutboxValidator> validators) {
         this.jdbc = jdbc;
         this.mapper = mapper;
+        this.validators = validators;
     }
 
     /** Must be called inside the same transaction as the state change. */
@@ -41,6 +44,7 @@ public class OutboxService {
         } catch (JsonProcessingException e) {
             throw new IllegalStateException(e);
         }
+        validators.orderedStream().forEach(v -> v.validate(type, json));
         jdbc.update("insert into outbox (type, aggregate_id, payload) values (?, ?, ?::jsonb)",
                 type, aggregateId, json);
     }

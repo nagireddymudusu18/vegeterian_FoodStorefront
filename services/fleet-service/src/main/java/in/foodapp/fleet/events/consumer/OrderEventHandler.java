@@ -33,28 +33,25 @@ public class OrderEventHandler {
         this.jdbc = jdbc;
     }
 
+    /** A malformed payload throws {@link MalformedEventException}; the poller parks the event in feed_dead_letter. */
     @Transactional
     public void handle(FeedEvent event) {
         if (!"OrderStatusChanged".equals(event.type())) {
             return;
         }
-        try {
-            JsonNode p = event.payload();
-            UUID orderId = uuid(p, "orderId");
-            String to = text(p, "to");
-            switch (to) {
-                case "PREPARING" -> open(orderId, p);
-                case "RIDER_ASSIGNED" -> closeIfUnclaimed(orderId);
-                case "PICKED_UP" -> advance(orderId, "PICKED_UP", "'ASSIGNED'");
-                case "DELIVERED" -> advance(orderId, "DELIVERED", "'ASSIGNED', 'PICKED_UP'");
-                case "CANCELLED", "REJECTED_BY_MERCHANT", "REFUNDED" ->
-                        advance(orderId, "CANCELLED", "'AVAILABLE', 'ASSIGNED'");
-                default -> log.debug("Ignoring order status {}", to);
-            }
-            events.publishEvent(new FleetChangedEvent());
-        } catch (MalformedEventException e) {
-            log.warn("Skipping malformed order event id={}: {}", event.id(), e.getMessage());
+        JsonNode p = event.payload();
+        UUID orderId = uuid(p, "orderId");
+        String to = text(p, "to");
+        switch (to) {
+            case "PREPARING" -> open(orderId, p);
+            case "RIDER_ASSIGNED" -> closeIfUnclaimed(orderId);
+            case "PICKED_UP" -> advance(orderId, "PICKED_UP", "'ASSIGNED'");
+            case "DELIVERED" -> advance(orderId, "DELIVERED", "'ASSIGNED', 'PICKED_UP'");
+            case "CANCELLED", "REJECTED_BY_MERCHANT", "REFUNDED" ->
+                    advance(orderId, "CANCELLED", "'AVAILABLE', 'ASSIGNED'");
+            default -> log.debug("Ignoring order status {}", to);
         }
+        events.publishEvent(new FleetChangedEvent());
     }
 
     private void open(UUID orderId, JsonNode p) {

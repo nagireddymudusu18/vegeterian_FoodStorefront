@@ -71,4 +71,29 @@ public final class Dtos {
 
     public record Accepted(String message) {
     }
+
+    /** Either tokens (signed in) or a challengeId (an emailed code is still needed). */
+    public record AdminLoginResponse(TokenResponse tokens, UUID challengeId) {
+    }
+
+    public record AdminCodeRequest(@jakarta.validation.constraints.NotNull UUID challengeId,
+                                   @NotBlank @Size(max = 10) String code) {
+    }
+
+    public record AcceptInviteRequest(@NotBlank @Size(max = 100) String token,
+                                      @NotBlank @Size(max = 254) String email,
+                                      @NotBlank @Size(max = 128) String password) {
+    }
+
+    public record InviteRequest(@NotBlank @jakarta.validation.constraints.Email @Size(max = 254) String email) {
+    }
+
+    public record TeamMember(UUID userId, String name, String email, boolean main) {
+    }
+
+    public record TeamInvite(UUID id, String email, Instant expiresAt) {
+    }
+
+    public record TeamView(List<TeamMember> members, List<TeamInvite> invites) {
+    }
 }

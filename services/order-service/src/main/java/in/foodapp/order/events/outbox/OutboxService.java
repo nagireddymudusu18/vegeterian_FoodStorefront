@@ -7,6 +7,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
@@ -24,10 +25,12 @@ public class OutboxService {
 
     private final JdbcTemplate jdbc;
     private final ObjectMapper mapper;
+    private final ObjectProvider<OutboxValidator> validators;
 
-    public OutboxService(JdbcTemplate jdbc, ObjectMapper mapper) {
+    public OutboxService(JdbcTemplate jdbc, ObjectMapper mapper, ObjectProvider<OutboxValidator> validators) {
         this.jdbc = jdbc;
         this.mapper = mapper;
+        this.validators = validators;
     }
 
     /** Must run inside the same transaction as the state change. */
@@ -40,6 +43,7 @@ public class OutboxService {
         } catch (JsonProcessingException e) {
             throw new IllegalStateException("Cannot serialise outbox payload", e);
         }
+        validators.orderedStream().forEach(v -> v.validate(type, json));
         jdbc.update("INSERT INTO outbox(type, aggregate_id, payload) VALUES (?, ?, ?::jsonb)",
                 type, aggregateId, json);
     }

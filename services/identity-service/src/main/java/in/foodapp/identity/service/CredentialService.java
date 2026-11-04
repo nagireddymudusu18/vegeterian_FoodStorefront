@@ -30,7 +30,8 @@ public class CredentialService {
     private final UserRepository users;
     private final ConsentRepository consents;
     private final PasswordService passwords;
-    private final UserService userService;
+    private final RoleResolver roles;
+    private final TokenIssuer tokens;
     private final RefreshTokenService refreshTokens;
     private final OutboxService outbox;
     private final PiiCipher cipher;
@@ -38,15 +39,18 @@ public class CredentialService {
     private final EmailTokenService emailTokens;
     private final EmailSender emails;
     private final AppProperties props;
+    private final ContactPublisher contacts;
 
     public CredentialService(UserRepository users, ConsentRepository consents, PasswordService passwords,
-                             UserService userService, RefreshTokenService refreshTokens, OutboxService outbox,
+                             RoleResolver roles, TokenIssuer tokens, RefreshTokenService refreshTokens, OutboxService outbox,
                              PiiCipher cipher, Clock clock, EmailTokenService emailTokens, EmailSender emails,
-                             AppProperties props) {
+                             AppProperties props, ContactPublisher contacts) {
+        this.contacts = contacts;
         this.users = users;
         this.consents = consents;
         this.passwords = passwords;
-        this.userService = userService;
+        this.roles = roles;
+        this.tokens = tokens;
         this.refreshTokens = refreshTokens;
         this.outbox = outbox;
         this.cipher = cipher;
@@ -135,7 +139,8 @@ public class CredentialService {
         }
         user.markEmailVerified();
         users.save(user);
-        return userService.tokenResponse(user, refreshTokens.issueNewFamily(user.getId()));
+        contacts.emailVerified(user);
+        return tokens.customerTokenResponse(user, refreshTokens.issueNewFamily(user.getId()));
     }
 
     /** Sends a fresh verification link if the address is registered and unverified; says nothing either way. */
@@ -175,13 +180,25 @@ public class CredentialService {
         user.markEmailVerified();
         user.recordSuccessfulLogin();
         users.save(user);
+        contacts.emailVerified(user);
         refreshTokens.revokeAllForUser(userId);
     }
 
 
-    /** Failed attempts must persist, so ApiException does not roll back. */
+    /** Failed attempts must persist, so ApiException does not roll back. Admin accounts must use /auth/admin/login. */
     @Transactional(noRollbackFor = ApiException.class)
     public Dtos.TokenResponse login(Dtos.LoginRequest req) {
+        User user = authenticate(req);
+        if (roles.isAdmin(user)) {
+            throw new ApiException(HttpStatus.FORBIDDEN, "Use the admin sign-in",
+                    "Administrator accounts sign in on the admin page");
+        }
+        return tokens.tokenResponse(user, refreshTokens.issueNewFamily(user.getId()));
+    }
+
+    /** Checks email, password, lockout and email verification. Failed attempts persist (no rollback). */
+    @Transactional(noRollbackFor = ApiException.class)
+    public User authenticate(Dtos.LoginRequest req) {
         String email = passwords.normaliseEmail(req.email());
         User user = users.lockByEmailHash(emailHash(email)).filter(User::isActive).orElse(null);
         Instant now = clock.instant();
@@ -204,7 +221,7 @@ public class CredentialService {
             throw new ApiException(HttpStatus.FORBIDDEN, "Email not verified",
                     "Please verify your email address. Check your inbox for the link.");
         }
-        return userService.tokenResponse(user, refreshTokens.issueNewFamily(user.getId()));
+        return user;
     }
 
     /**
