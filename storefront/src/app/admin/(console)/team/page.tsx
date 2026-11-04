@@ -29,7 +29,7 @@ export default function TeamPage() {
   if (!identity.isSuperAdmin(me)) {
     return (
       <div className="space-y-2">
-        <h1 className="text-2xl font-bold">Team</h1>
+        <h1 className="text-2xl font-extrabold tracking-tight">Team</h1>
         <p className="text-stone-700">Only the main admin can manage the admin team.</p>
       </div>
     );
@@ -69,7 +69,7 @@ export default function TeamPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold">Admin team</h1>
+        <h1 className="text-2xl font-extrabold tracking-tight">Admin team</h1>
         <p className="text-sm text-stone-600">
           Only you, the main admin, can add or remove administrators. Invitees must first create and verify an account with the invited
           email address. Removing someone ends their sessions; tokens already issued stop working within about 15 minutes.
@@ -78,7 +78,7 @@ export default function TeamPage() {
 
       {error !== null && <ErrorBox error={error} />}
 
-      <form onSubmit={invite} className="flex flex-wrap items-end gap-3 rounded-2xl bg-white p-4 shadow-sm ring-1 ring-stone-200" noValidate>
+      <form onSubmit={invite} className="card flex flex-wrap items-end gap-3 p-4" noValidate>
         <div className="min-w-0 flex-1">
           <label htmlFor="invite-email" className="mb-1 block text-sm font-medium">
             Invite an administrator by email
@@ -110,7 +110,7 @@ export default function TeamPage() {
             <h2 id="members-h" className="text-lg font-semibold">
               Administrators
             </h2>
-            <ul className="divide-y divide-stone-200 rounded-2xl bg-white shadow-sm ring-1 ring-stone-200">
+            <ul className="card divide-y divide-stone-200">
               {team.members.map((m) => (
                 <li key={m.userId} className="flex items-center gap-3 p-4">
                   <div className="min-w-0 flex-1">
@@ -142,7 +142,7 @@ export default function TeamPage() {
             {team.invites.length === 0 ? (
               <p className="text-sm text-stone-600">No pending invites.</p>
             ) : (
-              <ul className="divide-y divide-stone-200 rounded-2xl bg-white shadow-sm ring-1 ring-stone-200">
+              <ul className="card divide-y divide-stone-200">
                 {team.invites.map((i) => (
                   <li key={i.id} className="flex items-center gap-3 p-4">
                     <div className="min-w-0 flex-1">

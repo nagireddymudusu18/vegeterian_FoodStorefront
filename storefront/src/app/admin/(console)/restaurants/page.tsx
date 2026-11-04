@@ -54,7 +54,7 @@ export default function AdminRestaurants() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold">Restaurants</h1>
+        <h1 className="text-2xl font-extrabold tracking-tight">Restaurants</h1>
         <p className="text-sm text-stone-600">
           Give a restaurant owner access to their kitchen. The owner must already have an account (sign-up with email); this gives that
           account the restaurant role and links it to the restaurant, so new paid orders reach them.
@@ -63,7 +63,7 @@ export default function AdminRestaurants() {
 
       {error !== null && <ErrorBox error={error} />}
 
-      <form onSubmit={link} noValidate className="grid gap-3 rounded-2xl bg-white p-4 shadow-sm ring-1 ring-stone-200 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
+      <form onSubmit={link} noValidate className="card grid gap-3 p-4 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
         <div>
           <label htmlFor="owner-restaurant" className="mb-1 block text-sm font-medium">
             Restaurant
@@ -113,7 +113,7 @@ export default function AdminRestaurants() {
       ) : restaurants.length === 0 ? (
         <Empty>No restaurants yet.</Empty>
       ) : (
-        <ul className="divide-y divide-stone-200 rounded-2xl bg-white shadow-sm ring-1 ring-stone-200">
+        <ul className="card divide-y divide-stone-200">
           {restaurants.map((r) => (
             <li key={r.id} className="flex items-center gap-3 p-4">
               <div className="min-w-0 flex-1">

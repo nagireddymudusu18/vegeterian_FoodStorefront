@@ -5,7 +5,7 @@ import { useParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { orders, errorMessage, type Order } from "@/lib/api";
-import { Stepper, StatusPill, canCancel, isFailure, isTerminal, statusLabel, useOrderStream } from "@/features/orders";
+import { Stepper, StatusPill, canCancel, isFailure, isFinal, isTerminal, statusLabel, useKeepFollowing, useOrderStream } from "@/features/orders";
 import { formatPaise } from "@/lib/money";
 import { useRequireAuth } from "@/features/auth";
 import { useFlag } from "@/features/flags";
@@ -28,19 +28,20 @@ export default function OrderPage() {
 
   const status = order?.status;
   const terminal = status ? isTerminal(status) : false;
+  const following = useKeepFollowing(status);
   const liveOn = useFlag("live_order_updates");
   const statusRef = useRef<string | undefined>(undefined);
   useEffect(() => {
     statusRef.current = status;
   });
 
-  const live = useOrderStream(id, authed && !terminal && liveOn, (s) => {
+  const live = useOrderStream(id, authed && following && liveOn, (s) => {
     if (s !== statusRef.current) setNonce((n) => n + 1);
   });
   const pollMs = live ? POLL_LIVE_MS : POLL_MS;
 
   useEffect(() => {
-    if (!authed || terminal) return;
+    if (!authed || !following) return;
     let stop = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
     const ctrl = new AbortController();
@@ -52,7 +53,7 @@ export default function OrderPage() {
         setOrder(o);
         setError(null);
         setLoading(false);
-        if (isTerminal(o.status)) return; // stop polling once the order is final
+        if (isFinal(o.status)) return; // stop polling once the order is final
       } catch (e) {
         if (stop || (e instanceof DOMException && e.name === "AbortError")) return;
         setError(e);
@@ -67,7 +68,7 @@ export default function OrderPage() {
       ctrl.abort();
       if (timer) clearTimeout(timer);
     };
-  }, [id, authed, terminal, nonce, pollMs]);
+  }, [id, authed, following, nonce, pollMs]);
 
   const doCancel = useCallback(async () => {
     setCancelling(true);
@@ -109,7 +110,7 @@ export default function OrderPage() {
         )}
         <p className="mt-2 flex flex-wrap items-center gap-2 text-sm text-stone-600" aria-live="polite">
           <span>Status:</span> <StatusPill status={order.status} />
-          {!terminal && <span>{live ? "(live)" : "(updating every 3 seconds)"}</span>}
+          {following && !isFinal(order.status) && <span>{live ? "(live)" : "(updating every 3 seconds)"}</span>}
         </p>
       </header>
 

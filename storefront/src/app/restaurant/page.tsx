@@ -60,7 +60,7 @@ export default function RestaurantHome() {
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-3">
-        <h1 className="text-xl font-bold">{history ? "Past orders" : "Live orders"}</h1>
+        <h1 className="text-2xl font-extrabold tracking-tight">{history ? "Past orders" : "Live orders"}</h1>
         <span className="text-xs text-stone-500">{live ? "(live)" : "(updating every few seconds)"}</span>
         <button
           type="button"
@@ -81,7 +81,7 @@ export default function RestaurantHome() {
       ) : (
         <ul className="space-y-3">
           {list.map((o) => (
-            <li key={o.id} className="space-y-3 rounded-2xl bg-white p-5 shadow-sm ring-1 ring-stone-200">
+            <li key={o.id} className="card space-y-3 p-5">
               <div className="flex flex-wrap items-center gap-2">
                 <span className="font-bold">#{o.orderNumber}</span>
                 <span className="rounded-full bg-stone-100 px-2 py-0.5 text-xs font-semibold">
