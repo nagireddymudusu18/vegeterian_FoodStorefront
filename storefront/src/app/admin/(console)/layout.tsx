@@ -6,6 +6,7 @@ import { rolesFromAccessToken, useAuth } from "@/features/auth";
 import { identity } from "@/lib/api";
 import { getTokens } from "@/lib/tokens";
 import { Spinner } from "@/components/ui";
+import { StaffHeader } from "@/shell/StaffHeader";
 
 /**
  * Admin area. The server enforces the role on every /admin API call; this guard only decides what to render.
@@ -49,46 +50,18 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
     );
   }
   const isMain = roles.includes("SUPER_ADMIN");
+  const links = [
+    { href: "/admin", label: "Dashboard" },
+    { href: "/admin/flags", label: "Feature flags" },
+    { href: "/admin/deliveries", label: "Deliveries" },
+    { href: "/admin/restaurants", label: "Restaurants" },
+    { href: "/admin/dead-letters", label: "Dead letters" },
+    ...(isMain ? [{ href: "/admin/team", label: "Team" }] : []),
+  ];
 
   return (
-    <div className="min-h-screen bg-stone-50">
-      <header className="border-b border-stone-200 bg-stone-900 text-stone-100">
-        <div className="mx-auto flex max-w-6xl items-center gap-4 px-4 py-3">
-          <Link href="/admin" className="text-lg font-extrabold tracking-tight">
-            Veggo Eats Admin
-          </Link>
-          <nav aria-label="Admin" className="flex gap-1 text-sm">
-            <Link href="/admin" className="rounded-lg px-3 py-2 hover:bg-stone-800">
-              Dashboard
-            </Link>
-            <Link href="/admin/flags" className="rounded-lg px-3 py-2 hover:bg-stone-800">
-              Feature flags
-            </Link>
-            <Link href="/admin/deliveries" className="rounded-lg px-3 py-2 hover:bg-stone-800">
-              Deliveries
-            </Link>
-            <Link href="/admin/restaurants" className="rounded-lg px-3 py-2 hover:bg-stone-800">
-              Restaurants
-            </Link>
-            <Link href="/admin/dead-letters" className="rounded-lg px-3 py-2 hover:bg-stone-800">
-              Dead letters
-            </Link>
-            {isMain && (
-              <Link href="/admin/team" className="rounded-lg px-3 py-2 hover:bg-stone-800">
-                Team
-              </Link>
-            )}
-          </nav>
-          <div className="ml-auto flex items-center gap-3 text-sm">
-            <Link href="/" className="rounded-lg px-3 py-2 hover:bg-stone-800">
-              View store
-            </Link>
-            <button type="button" onClick={logout} className="rounded-lg px-3 py-2 hover:bg-stone-800">
-              Sign out
-            </button>
-          </div>
-        </div>
-      </header>
+    <div className="min-h-screen">
+      <StaffHeader area="Admin" homeHref="/admin" links={links} onLogout={logout} storeLabel="View store" widthClass="max-w-6xl" />
       <main id="main" className="mx-auto w-full max-w-6xl px-4 py-6">
         {children}
       </main>

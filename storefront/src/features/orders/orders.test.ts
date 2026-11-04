@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { canCancel, isTerminal, stepState } from "./orders";
+import { awaitsRefund, canCancel, isFinal, isTerminal, stepState } from "./orders";
 import { certificationTier, matchesDiet, toList } from "@/features/catalog";
 
 describe("order status helpers", () => {
@@ -15,6 +15,15 @@ describe("order status helpers", () => {
     expect(isTerminal("PREPARING")).toBe(false);
     expect(canCancel("CREATED")).toBe(true);
     expect(canCancel("PICKED_UP")).toBe(false);
+  });
+  it("keeps following closed orders until the refund lands", () => {
+    expect(awaitsRefund("CANCELLED")).toBe(true);
+    expect(awaitsRefund("MERCHANT_REJECTED")).toBe(true);
+    expect(isFinal("CANCELLED")).toBe(false);
+    expect(isFinal("REFUNDED")).toBe(true);
+    expect(isFinal("DELIVERED")).toBe(true);
+    expect(isFinal("PAYMENT_FAILED")).toBe(true);
+    expect(isFinal("PREPARING")).toBe(false);
   });
 });
 

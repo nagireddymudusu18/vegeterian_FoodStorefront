@@ -49,12 +49,12 @@ export default function AdminDeliveries() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold">Deliveries</h1>
+      <h1 className="text-2xl font-extrabold tracking-tight">Deliveries</h1>
       {error != null && <ErrorBox error={error} />}
       {deliveries.length === 0 ? (
         <Empty>No deliveries yet.</Empty>
       ) : (
-        <div className="overflow-x-auto rounded-2xl bg-white shadow-sm ring-1 ring-stone-200">
+        <div className="card overflow-x-auto">
           <table className="w-full text-left text-sm">
             <thead className="border-b border-stone-200 text-stone-600">
               <tr>

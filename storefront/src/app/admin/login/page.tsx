@@ -72,11 +72,11 @@ export default function AdminLoginPage() {
   return (
     <main className="mx-auto flex min-h-screen max-w-md flex-col justify-center space-y-5 px-4 py-10">
       <div className="text-center">
-        <h1 className="text-2xl font-bold">Veggo Eats Admin</h1>
+        <h1 className="text-2xl font-extrabold tracking-tight">Veggo Eats Admin</h1>
         <p className="mt-1 text-sm text-stone-600">Administrators sign in with email and password only.</p>
       </div>
 
-      <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-stone-200">
+      <div className="card p-5">
         {challengeId ? (
           <form onSubmit={submitCode} className="space-y-4" noValidate>
             <p className="text-sm text-stone-700">

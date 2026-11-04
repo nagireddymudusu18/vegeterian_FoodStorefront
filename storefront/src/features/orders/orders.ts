@@ -35,6 +35,19 @@ export function isTerminal(status: string): boolean {
   return status === "DELIVERED" || TERMINAL_FAILURE.includes(status);
 }
 
+/** Closed orders that were paid move on to REFUNDED shortly after, so they are followed for a while longer. */
+const REFUND_PENDING = ["CANCELLED", "REJECTED", "MERCHANT_REJECTED"];
+export const REFUND_FOLLOW_MS = 3 * 60 * 1000;
+
+export function awaitsRefund(status: string): boolean {
+  return REFUND_PENDING.includes(status);
+}
+
+/** True when no further status change is expected, so polling and the live stream can stop for good. */
+export function isFinal(status: string): boolean {
+  return isTerminal(status) && !awaitsRefund(status);
+}
+
 export function isFailure(status: string): boolean {
   return TERMINAL_FAILURE.includes(status);
 }

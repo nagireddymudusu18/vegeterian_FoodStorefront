@@ -53,7 +53,7 @@ export default function AdminDeadLetters() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold">Dead letters</h1>
+        <h1 className="text-2xl font-extrabold tracking-tight">Dead letters</h1>
         <p className="text-sm text-stone-600">
           Events that a service kept failing to apply (or that were malformed) wait here, so nothing is lost and the rest of the feed keeps
           moving. Retry after fixing the cause; discard only if the event is no longer needed.
@@ -76,7 +76,7 @@ export default function AdminDeadLetters() {
           {items.map((d) => {
             const key = `${d.service}:${d.id}`;
             return (
-              <li key={key} className="space-y-2 rounded-2xl bg-white p-4 shadow-sm ring-1 ring-stone-200">
+              <li key={key} className="card space-y-2 p-4">
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="rounded-full bg-stone-900 px-2.5 py-1 text-xs font-semibold text-white">
                     {SERVICES.find((s) => s.key === d.service)?.label}

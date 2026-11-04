@@ -43,10 +43,10 @@ export default function AcceptAdminInvitePage() {
   return (
     <main className="mx-auto flex min-h-screen max-w-md flex-col justify-center space-y-5 px-4 py-10">
       <div className="text-center">
-        <h1 className="text-2xl font-bold">Accept admin invite</h1>
+        <h1 className="text-2xl font-extrabold tracking-tight">Accept admin invite</h1>
         <p className="mt-1 text-sm text-stone-600">Veggo Eats Admin</p>
       </div>
-      <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-stone-200">
+      <div className="card p-5">
         {token === null ? (
           <p className="text-sm text-stone-700">This invite link is incomplete. Open the link from your invitation email.</p>
         ) : done ? (

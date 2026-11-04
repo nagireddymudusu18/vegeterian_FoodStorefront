@@ -17,7 +17,7 @@ function Tile({ href, label, children, action, alert }: { href: string; label: s
   return (
     <Link
       href={href}
-      className={`rounded-2xl bg-white p-5 shadow-sm ring-1 hover:ring-green-600 ${alert ? "ring-red-400" : "ring-stone-200"}`}
+      className={`block rounded-2xl bg-white p-5 shadow-sm ring-1 hover:ring-green-600 ${alert ? "ring-red-400" : "ring-stone-200"}`}
     >
       <p className="text-sm text-stone-600">{label}</p>
       <div className="mt-1">{children}</div>
@@ -55,7 +55,7 @@ export default function AdminDashboard() {
   const on = flags.filter((f) => f.enabled).length;
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold">Dashboard</h1>
+      <h1 className="text-2xl font-extrabold tracking-tight">Dashboard</h1>
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <Tile href="/admin/flags" label="Feature flags" action="Manage flags">
           <p className="text-3xl font-bold">

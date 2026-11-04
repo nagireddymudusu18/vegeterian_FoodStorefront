@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { errorMessage, orders, type TrackedOrder } from "@/lib/api";
-import { Stepper, StatusPill, isFailure, isTerminal, statusLabel } from "@/features/orders";
+import { Stepper, StatusPill, isFailure, isFinal, statusLabel, useKeepFollowing } from "@/features/orders";
 import { formatPaise } from "@/lib/money";
 import { ErrorBox } from "@/components/ui";
 import { useFlag } from "@/features/flags";
@@ -12,8 +12,10 @@ const POLL_MS = 5000;
 function TrackResult({ number, onReset }: { number: string; onReset: () => void }) {
   const [order, setOrder] = useState<TrackedOrder | null>(null);
   const [error, setError] = useState<unknown>(null);
+  const following = useKeepFollowing(order?.status);
 
   useEffect(() => {
+    if (!following) return;
     let stop = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
     let found = false;
@@ -26,7 +28,7 @@ function TrackResult({ number, onReset }: { number: string; onReset: () => void 
         found = true;
         setOrder(o);
         setError(null);
-        if (isTerminal(o.status)) return;
+        if (isFinal(o.status)) return;
       } catch (e) {
         if (stop || (e instanceof DOMException && e.name === "AbortError")) return;
         setError(e);
@@ -41,7 +43,7 @@ function TrackResult({ number, onReset }: { number: string; onReset: () => void 
       ctrl.abort();
       if (timer) clearTimeout(timer);
     };
-  }, [number]);
+  }, [number, following]);
 
   if (error && !order) {
     return (
@@ -70,7 +72,7 @@ function TrackResult({ number, onReset }: { number: string; onReset: () => void 
         <h2 className="relative text-2xl font-extrabold tracking-wide sm:text-3xl">{order.orderNumber}</h2>
         <p className="relative mt-2 flex flex-wrap items-center gap-2 text-sm" aria-live="polite">
           <StatusPill status={order.status} />
-          {!isTerminal(order.status) && <span className="text-green-50">updating live</span>}
+          {following && !isFinal(order.status) && <span className="text-green-50">updating live</span>}
         </p>
       </header>
 

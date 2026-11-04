@@ -146,19 +146,19 @@ $env:MAVEN_OPTS="-Djavax.net.ssl.trustStoreType=WINDOWS-ROOT"
   In Windows PowerShell 5, quote SQL identifiers passed to native tools with `\"`.
 
 **Last verified test counts (30 Oct 2026):** identity 86, catalog 65, payment 50 (after the auto-refund work), fleet 28,
-order 92, notification 49 backend tests; storefront 51 Vitest tests (2 Nov 2026, after the SEO helpers); `tsc`, lint and build clean; the full smoke test passed
+order 92, notification 49 backend tests; storefront 52 Vitest tests (3 Nov 2026, after the refund-follow helpers); `tsc`, lint and build clean; the full smoke test passed
 (including the notification checks) before the local stack was removed. The counts for services touched by later fixes
 (order, fleet, notification, storefront) were not re-recorded. PR #3 was committed without re-running the tests locally;
 check CI on `develop` before relying on it.
 
-## 5. Google Cloud sandbox (current state: STOPPED on 2 Nov 2026; VM `TERMINATED`, Cloud SQL `STOPPED`; last deploy has the redesign G1 to G6)
+## 5. Google Cloud sandbox (current state: STOPPED on 3 Nov 2026; VM `TERMINATED`, Cloud SQL `STOPPED`; last deploy has the redesign G1 to G6, not G7 or finding 12)
 
 Project `veggo-eats-6110`, region `asia-south1` (Mumbai), account `nagireddy.mudusu@gmail.com`, free-credit billing
 account with a ₹1,500 monthly budget alert. Details and commands: [../deploy/gcp/README.md](../deploy/gcp/README.md).
 
 | Resource | Name / value | State now |
 |---|---|---|
-| VM | `veggo-sandbox-vm`: e2-medium, Ubuntu 24.04, zone `asia-south1-a`, 20 GB | **TERMINATED** (storefront with the G1 to G6 redesign is in the bucket; the six jars are unchanged from 30 Oct) |
+| VM | `veggo-sandbox-vm`: e2-medium, Ubuntu 24.04, zone `asia-south1-a`, 20 GB | **TERMINATED** (stopped 3 Nov; the six jars are unchanged from 30 Oct and the storefront in the bucket has G1 to G6) |
 | Cloud SQL | `veggo-sandbox-db`: PostgreSQL 16, db-f1-micro, six DBs and users (`identity`, `catalog`, `order`, `payment`, `fleet`, `notification`), PostGIS in `catalog`, no authorized networks | **STOPPED** (`activation-policy=NEVER`) |
 | Static IP | `veggo-sandbox-ip` = 34.47.166.37 | reserved (small charge while the VM is stopped) |
 | URL | `https://34-47-166-37.sslip.io` (free sslip.io host, Caddy gets the Let's Encrypt certificate) | down while the VM is stopped; after a start the first minutes show 502s (about 8 to 10 minutes until all APIs answer) |
@@ -219,7 +219,7 @@ services/{identity,catalog,order,payment,fleet,notification}-service/   Spring B
 storefront/                  Next.js 15, React 19, Tailwind 4, Vitest. Routes: (customer), admin, partner, restaurant
 contracts/                   events/*.json (12 schemas) and CONVENTIONS.md
 deploy/gcp                   GCP sandbox README and vm/ install files (loader, install, run-service, Caddyfile)
-deploy/scripts               smoke.mjs (runs on the VM after a deploy), gen-cloud-env.mjs (secrets for app.env)
+deploy/scripts               smoke.mjs (runs on the VM after a deploy), gen-cloud-env.mjs (secrets for app.env), local-cors-proxy.mjs (localhost to sandbox, adds CORS)
 deploy/local                 Git-ignored: cloud-app.env and gcp.env (cloud keys and database passwords)
 docs/                        architecture, getting-started, deployment, observability, per-service guides, this file
 .github/workflows            ci-services, ci-storefront (both green on develop)
@@ -254,7 +254,8 @@ Common env vars (see `deploy/gcp/vm/run-service.sh` for exactly what each servic
   Existing users get no email/SMS contact until they verify again (identity only publishes on change).
 - The Dockerfiles run only in CI (image build), never in a deployment. The GitHub CI workflows have passed on every run.
 - The browser UI for the optional emailed admin code.
-- Findings 6 to 8 (notification lifecycle, header links, admin restaurants and dead-letter pages) are deployed but not checked in a browser.
+- Findings 6 to 8 are now checked in a browser (3 Nov 2026). Still unchecked: dead-letter retry and discard (nothing was parked), the
+  admin page layouts at phone width, and the dead-letter and flag pages with the new G7 header at phone width.
 - Account deletion's effect inside notification-service (erasure of contacts and inbox) was not checked on the cloud.
 - The IAM roles on the VM service account were bound but not audited.
 - Real Razorpay, SMS and email providers (none connected).
@@ -263,8 +264,8 @@ Common env vars (see `deploy/gcp/vm/run-service.sh` for exactly what each servic
 
 **Now (agreed 30 Oct 2026): fix the findings from the full sandbox test below one at a time, then return to the parked
 enhancements.** Status on 31 Oct 2026: findings 1 to 9 are fixed and merged to `develop` (PR #3); 10 and 11 are not started.
-The sandbox was started again on 2 Nov 2026 to deploy and test the storefront (see the F items below). Still to do: check findings 6 to 8
-in a browser.
+The sandbox was started again on 2 Nov 2026 to deploy and test the storefront (see the F items below), and again on 3 Nov 2026, when
+findings 6 to 8 and 12 were checked in a browser (see each finding).
 
 **Sandbox test, 30 Oct 2026 (all six services deployed and exercised in a browser; QA data is still in the sandbox):**
 Worked: browsing and filters, cart, guest OTP checkout, fake payment, live status, public tracking, email register / verify /
@@ -293,11 +294,14 @@ Findings, most important first:
 5. ~~**Public API docs / security headers**~~ **FIXED and deployed (merged in PR #3).** The Caddyfile now returns 404 for every
    service's `/v3/api-docs` and `/swagger-ui*` and sends CSP, X-Frame-Options and Permissions-Policy. Checked in a browser: no
    CSP violations on home, login and track. When Razorpay Checkout is enabled, extend the CSP (note in the Caddyfile).
-6. ~~**Notification copy and lifecycle**~~ **FIXED and deployed, not yet checked in a browser (PR #3).** notification-service
+6. ~~**Notification copy and lifecycle**~~ **FIXED, deployed and checked in a browser 3 Nov 2026 (PR #3).** A paid, accepted order sent the
+   rider a "New delivery job"; when the rider accepted it the broadcast disappeared and "Delivery assigned to you" appeared. notification-service
    now withdraws the rider "New delivery job" broadcasts once a job is taken or closed, and the copy was made clearer.
-7. ~~**Navigation**~~ **FIXED and deployed, not yet checked in a browser (PR #3).** The header has Kitchen and Deliveries
+7. ~~**Navigation**~~ **FIXED, deployed and checked in a browser 3 Nov 2026 (PR #3).** An admin with a linked restaurant saw Admin and Kitchen; a rider saw only
+   Deliveries and no Admin link. The header has Kitchen and Deliveries
    links for the matching roles, and the "Admin" link no longer shows to a non-admin session.
-8. ~~**Admin gaps**~~ **FIXED and deployed, not yet checked in a browser (PR #3).** New admin restaurants and dead-letter
+8. ~~**Admin gaps**~~ **FIXED, deployed and checked in a browser 3 Nov 2026 (PR #3).** The restaurant link form worked (linked an account to Green Leaf Vegan Kitchen),
+   the dead-letter page showed its empty state and the corrected `delivery_module` text. New admin restaurants and dead-letter
    pages in the console (restaurant owner link, dead-letter retry/discard), and the `delivery_module` flag text was corrected
    (identity migration V6). Still open: no alerting on dead letters, and no admin UI for manual refunds.
 9. ~~**Console noise**~~ **FIXED, checked locally (PR #3).** The storefront refreshes the token before it expires, so the 401
@@ -307,16 +311,22 @@ Findings, most important first:
     still drafts with placeholders.
 11. **Ops:** on the first boot after a deploy identity crash-looped until the installer replaced `app.env` (old units start
     first; harmless but noisy); existing users still need a contact backfill for email/SMS.
-12. **Order page stops following a cancelled order (found 2 Nov 2026).** `isTerminal` in `features/orders/orders.ts` treats
-    `CANCELLED`, `REJECTED` and `MERCHANT_REJECTED` as final, so the live stream and polling stop. Since auto-refunds, a paid
-    order moves on to `REFUNDED` about a minute later, but the page still shows "Cancelled" until you reload. Fix idea: keep
-    following these statuses for a few minutes (or until `REFUNDED`) before stopping. Not fixed yet; needs a decision on how long to follow.
+12. ~~**Order page stops following a cancelled order (found 2 Nov 2026).**~~ **FIXED locally 3 Nov 2026 (not deployed, not committed).** `isTerminal` still
+    marks `CANCELLED`, `REJECTED` and `MERCHANT_REJECTED` as failures, but the order page and the tracking page now keep following them
+    for 3 minutes (`REFUND_FOLLOW_MS` in `features/orders/orders.ts`, hook `useKeepFollowing`) so the later move to `REFUNDED` shows up
+    without a reload. `isFinal` is the "no more changes" check used to stop polling. An unpaid cancelled order never reaches `REFUNDED`, so
+    it simply stops after the window. Checked on the sandbox 3 Nov 2026 with the local storefront: a paid order was cancelled and the page went Cancelled then Refunded within 6 seconds with no reload. The 3-minute window was my default (refunds took about a minute earlier; change the constant if you prefer another).
 13. **Mobile header overflows (found 2 Nov 2026) - FIXED locally in G2.** At phone width the logo and "Track order" wrapped onto two lines and the Cart
     button was cut off, so the page scrolled sideways. The new header fits at 390 to 446px; checked on 8 pages.
 QA data left in the sandbox: users `qa.admin`, `qa.admin2` (admin removed), `qa.owner`, `qa.customer` (@example.com),
 phone users 9811100001 (customer), 9811100002 (rider) and 9811100077 (guest "QA Deploy Check", 2 Nov), about eleven orders
 (the 2 Nov one was cancelled and auto-refunded), and the restaurant `Spice Route Kitchen` now
 linked to `qa.owner@example.com`. The main admin is back on `nagireddy.mudusu@gmail.com`.
+On 3 Nov 2026 `nagireddy.mudusu@gmail.com` turned out not to be registered in the sandbox database, so it was registered and verified through
+the normal flow (verification link read from Cloud Logging) with a throwaway test password; set your own with "Forgot password" at `/admin/login`.
+That account is now also linked as owner of `Green Leaf Vegan Kitchen`, and the QA rider (9811100002) took order `FA-RHJWH-83CVW` (left in progress).
+Running the local storefront against the sandbox: the Caddy edge sends no CORS headers, so a small local proxy on port 8080 that forwards to the
+sandbox and adds `Access-Control-Allow-Origin: http://localhost:3000` is needed (`deploy/scripts/local-cors-proxy.mjs`; the storefront's default API base is `http://localhost:8080`).
 
 **Parked enhancements (to plan later), roughly by value:**
 - **A. Automated GCP deploy:** one script or a GitHub Action (Workload Identity Federation) that builds the jars and
@@ -359,8 +369,14 @@ linked to `qa.owner@example.com`. The main admin is back on `nagireddy.mudusu@gm
     order (OTP from Cloud Logging, placed, cancelled; QA phone 9811100088) at 390px and 1280px: no sideways scroll, no console or CSP
     errors. A scripted Edge run (`playwright-core` in a temp folder, not in the repo) is the reliable way to screenshot at phone width; the
     embedded VS Code browser tab is narrow and its screenshots go stale when the tab is hidden.
-  - Next: the partner, kitchen and admin screens still use their own headers (colours follow the palette already); dish photos once
-    restaurant uploads exist.
+  - **G7 partner, kitchen and admin screens: DONE locally (3 Nov 2026, not deployed, not committed).** New `shell/StaffHeader.tsx` (brand
+    mark, a haldi "Admin / Kitchen / Partner" tag, optional scrollable section links with the current page in leaf green, bell, Sign out)
+    replaces the three dark headers (green, orange, black). Layouts no longer set a `bg-stone-50` page colour (cream shows through), and the
+    admin, kitchen and partner pages use the shared `card` style and the heavier page title. Checked on 3 Nov 2026 with real sandbox data (local
+        storefront): admin pages (dashboard, flags, deliveries, restaurants, dead letters, team) with the current section highlighted, the kitchen live
+        orders and the partner dashboard all render with the new header, no console errors and no sideways scroll at 390px on the kitchen page; tsc, lint, 52
+        tests and build clean. Not checked at phone width: the admin nav row and the partner page.
+  - Next: dish photos once restaurant uploads exist.
 - **F. Free building blocks (research, 31 Oct 2026; verify each vendor page before adopting).** Agreed order, one step at a
   time with validation after each: SEO built-ins, then sonner, then motion, then shadcn/ui. Status:
   - **F1 SEO built-ins: DONE and deployed to the sandbox on 2 Nov 2026 (not committed).** Root metadata (`metadataBase`, canonical,
@@ -439,3 +455,44 @@ linked to `qa.owner@example.com`. The main admin is back on `nagireddy.mudusu@gm
 - Never print, log or commit anything from `deploy/local/*.env`.
 - After every enhancement or fix, update this file in the same change: finding and enhancement status, test counts,
   sandbox state (running or stopped) and the "Not verified" list. The owner asked for this on 31 Oct 2026.
+
+## 11. Setting up on a new machine (written 3 Nov 2026 when the owner moved laptops)
+
+Do these in order. Ask the owner for anything marked **owner**. Do not skip step 3's rule: secrets are never committed.
+
+1. **Clone and branch.** Clone `https://github.com/nagireddymudusu18/vegeterian_FoodStorefront.git`. Work from a branch cut from
+   `origin/develop` (the redesign and sandbox fixes are merged there; the branch `feature/staff-screens-refund-follow` holds the
+   finding 12 fix and the staff screens until it is merged). Set `git config user.name` and `user.email` (**owner**); the owner makes every
+   commit and push unless they say otherwise in the current conversation.
+2. **Install tools** (Windows, no admin needed): JDK 21, Maven 3.9.9, Node (system-wide is fine) and the Google Cloud SDK. The shell setup
+   for Java and Maven is in section 4. On the old laptop the tools lived in `%USERPROFILE%\tools`, and gcloud needed a TLS helper
+   (`gcloud-env.ps1`, `gcloud-ssl-fix`) only because of the corporate network; a machine without TLS inspection will not need it.
+   Then `npm ci` in `storefront/`. Check with `npx tsc --noEmit`, `npm run lint`, `npm test` (52 tests expected) and `npm run build`.
+3. **Secrets in `deploy/local/` (git-ignored, must stay that way).** `cloud-app.env` and `gcp.env` hold the database passwords and the
+   JWT, PII and feed keys. **Never remove `deploy/local/` from `.gitignore` and never commit these files.** Restore them safely:
+   - Sign in: `gcloud auth login` as `nagireddy.mudusu@gmail.com` (**owner**), then `gcloud config set project veggo-eats-6110`.
+   - `cloud-app.env` is the file uploaded to the private bucket as `app.env`, so it can be pulled back:
+     `gcloud storage cp gs://veggo-eats-6110-sandbox-artifacts/app.env deploy/local/cloud-app.env`
+     (this keeps the existing keys, so stored data stays readable; `gen-cloud-env.mjs --keep-keys` reads this file).
+   - `gcp.env` (the `PW_*` database passwords) was also uploaded to the same private bucket on 3 Nov 2026 (path `secrets/gcp.env`, never in git):
+     `gcloud storage cp gs://veggo-eats-6110-sandbox-artifacts/secrets/gcp.env deploy/local/gcp.env`
+     It is only needed to regenerate `app.env` or to add a service. If it is ever missing, reset each Cloud SQL user's password with
+     `gcloud sql users set-password`, write the new values into `gcp.env`, regenerate `app.env` with `--keep-keys` and redeploy.
+     The bucket has public access prevention enforced and no public members. If you change `gcp.env`, upload it again to the same path.
+   - Changing `PII_ENC_KEY`, `PII_HMAC_KEY` or `CONTACT_EVENT_KEY` makes existing encrypted data unreadable.
+4. **Bring the sandbox back** only when it is needed (it costs about ₹70 to ₹85 a day): section 5 "Bring it back up" (Cloud SQL first, then the
+   VM; allow about 20 minutes, with 502s for the first 8 to 10). Stop it again afterwards with "Stop again". The first minutes after a start
+   are slow because the services start one by one.
+5. **Run the storefront locally against the sandbox** (for UI review):
+   - Start the proxy: `node deploy/scripts/local-cors-proxy.mjs` (listens on :8080 and forwards to the sandbox with CORS for `http://localhost:3000`).
+   - In `storefront/`, with `NEXT_PUBLIC_API_BASE` unset (default `http://localhost:8080`): `npm run dev`, then open `http://localhost:3000`.
+   - Pointing `NEXT_PUBLIC_API_BASE` straight at the sandbox does not work from localhost (CORS), and a build for deploy must use
+     `NEXT_PUBLIC_API_BASE=https://34-47-166-37.sslip.io` (see section 5).
+6. **Test accounts on the sandbox** (sandbox only; OTPs and email links appear in Cloud Logging under `jsonPayload.message`, not on screen):
+   - Main admin `nagireddy.mudusu@gmail.com`: sign in at `/admin/login`. It was registered on 3 Nov 2026 with a throwaway test password,
+     so use "Forgot password" and read the reset link from the logs, and set a real password (**owner**). It also owns `Green Leaf Vegan Kitchen`.
+   - Rider: phone `9811100002` (QA Rider, OTP from the logs). Other QA accounts are listed at the end of section 9.
+   - To read a log line: `gcloud logging read "jsonPayload.message:OTP" --project=veggo-eats-6110 --freshness=5m --limit=3 --format="value(jsonPayload.message)"`.
+   - In the embedded browser or a script, wait for the page to hydrate (about 2 seconds after load) before typing into forms, or React clears the fields.
+7. **Next steps once set up:** merge the PR for `feature/staff-screens-refund-follow`, then redeploy the storefront to the sandbox (recipe at the end of
+   the F items in section 9) to put G7 and the finding 12 fix live; then continue with the parked enhancements (section 9).

@@ -34,13 +34,13 @@ export default function FlagsPage() {
   return (
     <div className="space-y-4">
       <div>
-        <h1 className="text-2xl font-bold">Feature flags</h1>
+        <h1 className="text-2xl font-extrabold tracking-tight">Feature flags</h1>
         <p className="text-sm text-stone-600">
           Changes apply to new requests straight away. Storefront flags take effect when customers next load the app.
         </p>
       </div>
       {error !== null && <ErrorBox error={error} />}
-      <ul className="divide-y divide-stone-200 rounded-2xl bg-white shadow-sm ring-1 ring-stone-200">
+      <ul className="card divide-y divide-stone-200">
         {flags.map((f) => (
           <li key={f.key} className="flex items-center gap-4 p-4">
             <div className="min-w-0 flex-1">
