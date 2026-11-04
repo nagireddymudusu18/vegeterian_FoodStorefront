@@ -474,9 +474,11 @@ Do these in order. Ask the owner for anything marked **owner**. Do not skip step
    - `cloud-app.env` is the file uploaded to the private bucket as `app.env`, so it can be pulled back:
      `gcloud storage cp gs://veggo-eats-6110-sandbox-artifacts/app.env deploy/local/cloud-app.env`
      (this keeps the existing keys, so stored data stays readable; `gen-cloud-env.mjs --keep-keys` reads this file).
-   - `gcp.env` (the `PW_*` database passwords) is only needed to regenerate `app.env` or to add a service. If it is missing, copy it from
-     the old laptop over a private channel (**owner**), or reset each Cloud SQL user's password with `gcloud sql users set-password`
-     and write the new values into `gcp.env`; then regenerate `app.env` with `--keep-keys` and redeploy.
+   - `gcp.env` (the `PW_*` database passwords) was also uploaded to the same private bucket on 3 Nov 2026 (path `secrets/gcp.env`, never in git):
+     `gcloud storage cp gs://veggo-eats-6110-sandbox-artifacts/secrets/gcp.env deploy/local/gcp.env`
+     It is only needed to regenerate `app.env` or to add a service. If it is ever missing, reset each Cloud SQL user's password with
+     `gcloud sql users set-password`, write the new values into `gcp.env`, regenerate `app.env` with `--keep-keys` and redeploy.
+     The bucket has public access prevention enforced and no public members. If you change `gcp.env`, upload it again to the same path.
    - Changing `PII_ENC_KEY`, `PII_HMAC_KEY` or `CONTACT_EVENT_KEY` makes existing encrypted data unreadable.
 4. **Bring the sandbox back** only when it is needed (it costs about ₹70 to ₹85 a day): section 5 "Bring it back up" (Cloud SQL first, then the
    VM; allow about 20 minutes, with 502s for the first 8 to 10). Stop it again afterwards with "Stop again". The first minutes after a start
