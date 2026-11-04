@@ -219,7 +219,7 @@ services/{identity,catalog,order,payment,fleet,notification}-service/   Spring B
 storefront/                  Next.js 15, React 19, Tailwind 4, Vitest. Routes: (customer), admin, partner, restaurant
 contracts/                   events/*.json (12 schemas) and CONVENTIONS.md
 deploy/gcp                   GCP sandbox README and vm/ install files (loader, install, run-service, Caddyfile)
-deploy/scripts               smoke.mjs (runs on the VM after a deploy), gen-cloud-env.mjs (secrets for app.env)
+deploy/scripts               smoke.mjs (runs on the VM after a deploy), gen-cloud-env.mjs (secrets for app.env), local-cors-proxy.mjs (localhost to sandbox, adds CORS)
 deploy/local                 Git-ignored: cloud-app.env and gcp.env (cloud keys and database passwords)
 docs/                        architecture, getting-started, deployment, observability, per-service guides, this file
 .github/workflows            ci-services, ci-storefront (both green on develop)
@@ -326,7 +326,7 @@ On 3 Nov 2026 `nagireddy.mudusu@gmail.com` turned out not to be registered in th
 the normal flow (verification link read from Cloud Logging) with a throwaway test password; set your own with "Forgot password" at `/admin/login`.
 That account is now also linked as owner of `Green Leaf Vegan Kitchen`, and the QA rider (9811100002) took order `FA-RHJWH-83CVW` (left in progress).
 Running the local storefront against the sandbox: the Caddy edge sends no CORS headers, so a small local proxy on port 8080 that forwards to the
-sandbox and adds `Access-Control-Allow-Origin: http://localhost:3000` is needed (the storefront's default API base is `http://localhost:8080`).
+sandbox and adds `Access-Control-Allow-Origin: http://localhost:3000` is needed (`deploy/scripts/local-cors-proxy.mjs`; the storefront's default API base is `http://localhost:8080`).
 
 **Parked enhancements (to plan later), roughly by value:**
 - **A. Automated GCP deploy:** one script or a GitHub Action (Workload Identity Federation) that builds the jars and
@@ -455,3 +455,42 @@ sandbox and adds `Access-Control-Allow-Origin: http://localhost:3000` is needed 
 - Never print, log or commit anything from `deploy/local/*.env`.
 - After every enhancement or fix, update this file in the same change: finding and enhancement status, test counts,
   sandbox state (running or stopped) and the "Not verified" list. The owner asked for this on 31 Oct 2026.
+
+## 11. Setting up on a new machine (written 3 Nov 2026 when the owner moved laptops)
+
+Do these in order. Ask the owner for anything marked **owner**. Do not skip step 3's rule: secrets are never committed.
+
+1. **Clone and branch.** Clone `https://github.com/nagireddymudusu18/vegeterian_FoodStorefront.git`. Work from a branch cut from
+   `origin/develop` (the redesign and sandbox fixes are merged there; the branch `feature/staff-screens-refund-follow` holds the
+   finding 12 fix and the staff screens until it is merged). Set `git config user.name` and `user.email` (**owner**); the owner makes every
+   commit and push unless they say otherwise in the current conversation.
+2. **Install tools** (Windows, no admin needed): JDK 21, Maven 3.9.9, Node (system-wide is fine) and the Google Cloud SDK. The shell setup
+   for Java and Maven is in section 4. On the old laptop the tools lived in `%USERPROFILE%\tools`, and gcloud needed a TLS helper
+   (`gcloud-env.ps1`, `gcloud-ssl-fix`) only because of the corporate network; a machine without TLS inspection will not need it.
+   Then `npm ci` in `storefront/`. Check with `npx tsc --noEmit`, `npm run lint`, `npm test` (52 tests expected) and `npm run build`.
+3. **Secrets in `deploy/local/` (git-ignored, must stay that way).** `cloud-app.env` and `gcp.env` hold the database passwords and the
+   JWT, PII and feed keys. **Never remove `deploy/local/` from `.gitignore` and never commit these files.** Restore them safely:
+   - Sign in: `gcloud auth login` as `nagireddy.mudusu@gmail.com` (**owner**), then `gcloud config set project veggo-eats-6110`.
+   - `cloud-app.env` is the file uploaded to the private bucket as `app.env`, so it can be pulled back:
+     `gcloud storage cp gs://veggo-eats-6110-sandbox-artifacts/app.env deploy/local/cloud-app.env`
+     (this keeps the existing keys, so stored data stays readable; `gen-cloud-env.mjs --keep-keys` reads this file).
+   - `gcp.env` (the `PW_*` database passwords) is only needed to regenerate `app.env` or to add a service. If it is missing, copy it from
+     the old laptop over a private channel (**owner**), or reset each Cloud SQL user's password with `gcloud sql users set-password`
+     and write the new values into `gcp.env`; then regenerate `app.env` with `--keep-keys` and redeploy.
+   - Changing `PII_ENC_KEY`, `PII_HMAC_KEY` or `CONTACT_EVENT_KEY` makes existing encrypted data unreadable.
+4. **Bring the sandbox back** only when it is needed (it costs about ₹70 to ₹85 a day): section 5 "Bring it back up" (Cloud SQL first, then the
+   VM; allow about 20 minutes, with 502s for the first 8 to 10). Stop it again afterwards with "Stop again". The first minutes after a start
+   are slow because the services start one by one.
+5. **Run the storefront locally against the sandbox** (for UI review):
+   - Start the proxy: `node deploy/scripts/local-cors-proxy.mjs` (listens on :8080 and forwards to the sandbox with CORS for `http://localhost:3000`).
+   - In `storefront/`, with `NEXT_PUBLIC_API_BASE` unset (default `http://localhost:8080`): `npm run dev`, then open `http://localhost:3000`.
+   - Pointing `NEXT_PUBLIC_API_BASE` straight at the sandbox does not work from localhost (CORS), and a build for deploy must use
+     `NEXT_PUBLIC_API_BASE=https://34-47-166-37.sslip.io` (see section 5).
+6. **Test accounts on the sandbox** (sandbox only; OTPs and email links appear in Cloud Logging under `jsonPayload.message`, not on screen):
+   - Main admin `nagireddy.mudusu@gmail.com`: sign in at `/admin/login`. It was registered on 3 Nov 2026 with a throwaway test password,
+     so use "Forgot password" and read the reset link from the logs, and set a real password (**owner**). It also owns `Green Leaf Vegan Kitchen`.
+   - Rider: phone `9811100002` (QA Rider, OTP from the logs). Other QA accounts are listed at the end of section 9.
+   - To read a log line: `gcloud logging read "jsonPayload.message:OTP" --project=veggo-eats-6110 --freshness=5m --limit=3 --format="value(jsonPayload.message)"`.
+   - In the embedded browser or a script, wait for the page to hydrate (about 2 seconds after load) before typing into forms, or React clears the fields.
+7. **Next steps once set up:** merge the PR for `feature/staff-screens-refund-follow`, then redeploy the storefront to the sandbox (recipe at the end of
+   the F items in section 9) to put G7 and the finding 12 fix live; then continue with the parked enhancements (section 9).
