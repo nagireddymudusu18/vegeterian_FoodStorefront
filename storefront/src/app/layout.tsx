@@ -47,8 +47,8 @@ const website: WithContext<WebSite> = {
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="en-IN">
-      <body className="min-h-screen font-sans antialiased">
+    <html lang="en-IN" suppressHydrationWarning>
+      <body className="min-h-screen font-sans antialiased" suppressHydrationWarning>
         <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLd(organization) }} />
         <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLd(website) }} />
         <a

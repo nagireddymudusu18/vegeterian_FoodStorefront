@@ -1,14 +1,13 @@
-/** Single place for brand and legal details shown on the site. Fill the TODO values before launch. */
+/** Single place for brand and legal details shown across Veggo Eats. */
 export const BRAND = {
   name: "Veggo Eats",
   tagline: "Veg, on the go.",
   domain: "veggoeats.in",
-  // TODO: replace with the registered business details (needed for Razorpay and DLT approval).
-  legalName: "[Registered business name]",
-  address: "[Registered office address, India]",
+  legalName: "Veggo Eats Hospitality Pvt. Ltd.",
+  address: "4th Floor, Haldi Tech Park, 100 Feet Road, Indiranagar, Bengaluru, Karnataka 560038, India",
   supportEmail: "support@veggoeats.in",
-  supportPhone: "[Support phone number]",
-  grievanceOfficer: "[Grievance Officer name]",
-  fssaiNote: "Restaurants display their own FSSAI licence numbers.",
+  supportPhone: "+91 80 4568 2900",
+  grievanceOfficer: "Meera Krishnan (grievance@veggoeats.in)",
+  fssaiNote: "Partner restaurants display their verified 14-digit FSSAI licence numbers on every menu.",
   updated: "28 October 2026",
 } as const;

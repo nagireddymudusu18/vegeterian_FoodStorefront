@@ -124,9 +124,9 @@ export default function AdminDashboard() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-extrabold tracking-tight text-stone-900">Org Admin · Live Operations</h1>
+          <h1 className="text-2xl font-extrabold tracking-tight text-stone-900">Marketplace Operations</h1>
           <p className="text-sm text-stone-600">
-            Real-time marketplace oversight across customer orders, certified kitchens, fleet dispatch, feature flags, and RBAC roles.
+            Real-time marketplace oversight across customer orders, certified kitchens, delivery fleet, feature flags, and team access.
           </p>
         </div>
         <button
@@ -185,17 +185,17 @@ export default function AdminDashboard() {
           <p className="mt-1 text-xs text-stone-600">Controls OTP, tracking, SSE &amp; dispatch</p>
         </Tile>
 
-        <Tile href="/admin/dead-letters" label="Dead letters" action="Review parked events" alert={!!parked}>
+        <Tile href="/admin/dead-letters" label="Event queue" action="Review failed events" alert={!!parked}>
           <p className="font-mono text-3xl font-extrabold tabular-nums text-stone-900">
-            {parked ?? "-"} <span className="font-sans text-base font-medium text-stone-500">waiting</span>
+            {parked ?? "-"} <span className="font-sans text-base font-medium text-stone-500">queued</span>
           </p>
-          <p className="mt-1 text-xs text-stone-600">Outbox &amp; consumer health across 4 services</p>
+          <p className="mt-1 text-xs text-stone-600">Async event health across orders, payments, fleet &amp; notifications</p>
         </Tile>
 
-        <Tile href="/admin/team" label="Users & RBAC roles" action="Manage portal roles & team">
-          <p className="text-base font-extrabold text-stone-900">4 Decoupled Portals</p>
+        <Tile href="/admin/team" label="Users & Access Control" action="Manage portal roles & team">
+          <p className="text-base font-extrabold text-stone-900">4 Portal Roles</p>
           <p className="mt-1 text-xs text-stone-600">
-            Grant or revoke RESTAURANT, PARTNER, and ADMIN access across registered accounts.
+            Manage Customer, Kitchen Partner, Delivery Partner, and Admin permissions.
           </p>
         </Tile>
       </div>
@@ -207,7 +207,7 @@ export default function AdminDashboard() {
               Live Marketplace Order Queue ({activeOrders?.length ?? 0})
             </h2>
             <p className="text-xs text-stone-600">
-              Active orders currently in PAID, MERCHANT_ACCEPTED, PREPARING, RIDER_ASSIGNED, or PICKED_UP state across all kitchens.
+              Active orders currently being prepared by partner kitchens or in transit with delivery partners.
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -285,13 +285,13 @@ export default function AdminDashboard() {
           </div>
         </div>
 
-        {/* Finding 11 Ops Tool: Backfill verified user contacts for notification-service */}
+        {/* Customer Contact Directory Sync */}
         <div className="flex flex-col justify-between rounded-2xl bg-white p-5 shadow-sm ring-1 ring-stone-200">
           <div>
-            <p className="text-xs font-bold uppercase tracking-wider text-stone-500">Notification Contacts</p>
-            <h2 className="mt-1 text-base font-extrabold text-stone-900">Outbox Contact Backfill</h2>
+            <p className="text-xs font-bold uppercase tracking-wider text-stone-500">Notification Directory</p>
+            <h2 className="mt-1 text-base font-extrabold text-stone-900">Customer Contact Sync</h2>
             <p className="mt-1 text-xs text-stone-600">
-              Re-publish encrypted verified phone &amp; email events for existing accounts to notification-service.
+              Sync verified customer phone numbers and email addresses with the notification service.
             </p>
             {backfillResult !== null && (
               <p className="mt-1.5 text-xs font-semibold text-green-800">

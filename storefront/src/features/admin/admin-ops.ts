@@ -1,6 +1,17 @@
-import type { AdminFlag, AdminUser, Delivery, Partner, Restaurant, StaffOrder } from "@/lib/api";
+import type {
+  AccountDomain,
+  AdminFlag,
+  AdminUser,
+  CustomerLoyaltyTier,
+  Delivery,
+  Partner,
+  Restaurant,
+  StaffOrder,
+} from "@/lib/api";
 
 export type AdminUserRoleFilter = "ALL" | "ADMIN" | "RESTAURANT" | "PARTNER" | "CUSTOMER";
+export type AdminAccountDomainFilter = "ALL" | AccountDomain;
+export type AdminLoyaltyTierFilter = "ALL" | CustomerLoyaltyTier;
 export type ToggleableUserRole = "RESTAURANT" | "PARTNER" | "ADMIN";
 
 export interface PlatformOpsSummary {
@@ -65,6 +76,8 @@ export function filterAdminUsers(
   users: AdminUser[],
   roleFilter: AdminUserRoleFilter,
   query: string,
+  domainFilter: AdminAccountDomainFilter = "ALL",
+  tierFilter: AdminLoyaltyTierFilter = "ALL",
 ): AdminUser[] {
   const q = query.trim().toLowerCase();
 
@@ -72,8 +85,16 @@ export function filterAdminUsers(
     if (roleFilter !== "ALL" && !u.roles.includes(roleFilter)) {
       return false;
     }
+    const domain = u.accountDomain ?? "CUSTOMER";
+    if (domainFilter !== "ALL" && domain !== domainFilter) {
+      return false;
+    }
+    if (tierFilter !== "ALL" && u.customerGroup?.loyaltyTier !== tierFilter) {
+      return false;
+    }
     if (!q) return true;
-    const hay = `${u.name ?? ""} ${u.email ?? ""} ${u.phone ?? ""} ${u.id} ${u.roles.join(" ")}`.toLowerCase();
+    const cg = u.customerGroup;
+    const hay = `${u.name ?? ""} ${u.email ?? ""} ${u.phone ?? ""} ${u.id} ${u.roles.join(" ")} ${domain} ${cg?.loyaltyTier ?? ""} ${cg?.dietaryCohort ?? ""}`.toLowerCase();
     return hay.includes(q);
   });
 }

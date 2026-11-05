@@ -79,7 +79,7 @@ export function refundStatusBanner(order: Pick<Order, "status" | "totalPaise" | 
       state: "PROCESSING",
       headline: "Automatic refund in progress",
       detail:
-        "This order was cancelled or declined by the kitchen. Payment service is initiating a full reversal to your original payment method.",
+        "This order was cancelled or declined by the kitchen. We have initiated a full refund to your original payment method.",
       amountPaise: order.totalPaise,
       reason: timelineReason,
     };

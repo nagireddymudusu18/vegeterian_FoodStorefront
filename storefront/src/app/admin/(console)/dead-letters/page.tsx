@@ -53,10 +53,10 @@ export default function AdminDeadLetters() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-extrabold tracking-tight">Dead letters</h1>
+        <h1 className="text-2xl font-extrabold tracking-tight">Failed Event Queue</h1>
         <p className="text-sm text-stone-600">
-          Events that a service kept failing to apply (or that were malformed) wait here, so nothing is lost and the rest of the feed keeps
-          moving. Retry after fixing the cause; discard only if the event is no longer needed.
+          Events that a downstream service could not process are held here so no updates are lost while live traffic continues.
+          Retry after resolving the issue, or discard if the event is no longer required.
         </p>
       </div>
 
@@ -68,9 +68,9 @@ export default function AdminDeadLetters() {
       )}
 
       {!items ? (
-        <Spinner label="Loading dead letters" />
+        <Spinner label="Loading event queue" />
       ) : items.length === 0 ? (
-        <Empty>Nothing is parked. All services are keeping up.</Empty>
+        <Empty>No failed events in the queue. All services are healthy and up to date.</Empty>
       ) : (
         <ul className="space-y-3">
           {items.map((d) => {

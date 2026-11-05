@@ -3,11 +3,12 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import { toast } from "sonner";
 import { identity } from "@/lib/api";
-import { OtpLogin, safeRestaurantNext, useAuth, validateEmail } from "@/features/auth";
+import { OtpLogin, passwordProblem, safeRestaurantNext, useAuth, validateEmail } from "@/features/auth";
 import { ErrorBox } from "@/components/ui";
 
-type Mode = "otp" | "password";
+type Mode = "otp" | "password" | "register";
 
 const INPUT = "w-full rounded-xl border border-stone-300 bg-white px-3 py-2.5 focus:border-green-600";
 const BUTTON = "btn-primary w-full";
@@ -21,13 +22,21 @@ export default function RestaurantLoginPage() {
   const router = useRouter();
   const { status, me, reload } = useAuth();
   const [mode, setMode] = useState<Mode>("otp");
+  const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [consent, setConsent] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>(null);
 
   useEffect(() => {
-    if (status === "authed" && me && (me.roles.includes("RESTAURANT") || me.roles.includes("ADMIN"))) {
+    if (
+      status === "authed" &&
+      me &&
+      (me.accountDomain === "RESTAURANT_OWNER" ||
+        me.roles.includes("RESTAURANT") ||
+        me.roles.includes("ADMIN"))
+    ) {
       router.replace(nextUrl());
     }
   }, [status, me, router]);
@@ -36,14 +45,35 @@ export default function RestaurantLoginPage() {
     router.replace(nextUrl());
   };
 
-  const submitPassword = async (e: React.FormEvent) => {
+  const submitEmail = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!validateEmail(email)) return setError(new Error("Enter a valid kitchen partner email address."));
-    if (!password) return setError(new Error("Enter your password."));
+    const isRegister = mode === "register";
+    if (isRegister && name.trim().length < 2) {
+      return setError(new Error("Enter your restaurant owner or manager name."));
+    }
+    if (!validateEmail(email)) {
+      return setError(new Error("Enter a valid kitchen partner email address."));
+    }
+    if (isRegister) {
+      const problem = passwordProblem(password);
+      if (problem) return setError(new Error(problem));
+      if (!consent) {
+        return setError(new Error("Please accept the Partner Terms and Privacy Policy to continue."));
+      }
+    } else if (!password) {
+      return setError(new Error("Enter your password."));
+    }
+
     setBusy(true);
     setError(null);
     try {
-      await identity.loginWithPassword(email, password);
+      if (isRegister) {
+        await identity.register(name, email, password, "RESTAURANT_OWNER");
+        await identity.loginWithPassword(email, password, "RESTAURANT_OWNER");
+        toast.success("Welcome to Veggo Eats Kitchen! Your partner account is ready.");
+      } else {
+        await identity.loginWithPassword(email, password, "RESTAURANT_OWNER");
+      }
       await reload();
       finish();
     } catch (err) {
@@ -60,15 +90,15 @@ export default function RestaurantLoginPage() {
         </span>
         <h1 className="mt-2 text-2xl font-extrabold tracking-tight text-ink">Veggo Eats Kitchen</h1>
         <p className="mt-1 text-sm text-stone-600">
-          Sign in to manage live kitchen tickets, preparation status, and dish availability &amp; pricing.
+          Sign in or register your restaurant partner account to manage live orders, kitchen prep, and menus.
         </p>
       </div>
 
       <div className="card p-5">
         <div
           role="tablist"
-          aria-label="Kitchen sign in method"
-          className="mb-5 grid grid-cols-2 gap-1 rounded-xl bg-stone-100 p-1"
+          aria-label="Kitchen authentication method"
+          className="mb-5 grid grid-cols-3 gap-1 rounded-xl bg-stone-100 p-1"
         >
           <button
             role="tab"
@@ -78,7 +108,7 @@ export default function RestaurantLoginPage() {
               setMode("otp");
               setError(null);
             }}
-            className={`rounded-lg px-3 py-2 text-sm font-semibold transition-colors ${
+            className={`rounded-lg px-2.5 py-2 text-xs font-semibold transition-colors sm:text-sm ${
               mode === "otp" ? "bg-white text-green-800 shadow" : "text-stone-600 hover:text-stone-900"
             }`}
           >
@@ -92,18 +122,54 @@ export default function RestaurantLoginPage() {
               setMode("password");
               setError(null);
             }}
-            className={`rounded-lg px-3 py-2 text-sm font-semibold transition-colors ${
+            className={`rounded-lg px-2.5 py-2 text-xs font-semibold transition-colors sm:text-sm ${
               mode === "password" ? "bg-white text-green-800 shadow" : "text-stone-600 hover:text-stone-900"
             }`}
           >
-            Email &amp; Password
+            Email Sign In
+          </button>
+          <button
+            role="tab"
+            type="button"
+            aria-selected={mode === "register"}
+            onClick={() => {
+              setMode("register");
+              setError(null);
+            }}
+            className={`rounded-lg px-2.5 py-2 text-xs font-semibold transition-colors sm:text-sm ${
+              mode === "register" ? "bg-white text-green-800 shadow" : "text-stone-600 hover:text-stone-900"
+            }`}
+          >
+            Partner Sign Up
           </button>
         </div>
 
         {mode === "otp" ? (
-          <OtpLogin submitLabel="Sign in to Kitchen Portal" onDone={finish} />
+          <OtpLogin
+            askName
+            accountDomain="RESTAURANT_OWNER"
+            submitLabel="Continue to Kitchen Portal"
+            onDone={finish}
+          />
         ) : (
-          <form onSubmit={submitPassword} className="space-y-4" noValidate>
+          <form onSubmit={submitEmail} className="space-y-4" noValidate>
+            {mode === "register" && (
+              <div>
+                <label htmlFor="kitchen-name" className="mb-1 block text-sm font-medium">
+                  Owner / Manager name
+                </label>
+                <input
+                  id="kitchen-name"
+                  type="text"
+                  autoComplete="name"
+                  maxLength={80}
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="e.g. Aarav Sharma"
+                  className={INPUT}
+                />
+              </div>
+            )}
             <div>
               <label htmlFor="kitchen-email" className="mb-1 block text-sm font-medium">
                 Partner email
@@ -124,22 +190,44 @@ export default function RestaurantLoginPage() {
               <input
                 id="kitchen-password"
                 type="password"
-                autoComplete="current-password"
+                autoComplete={mode === "register" ? "new-password" : "current-password"}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 className={INPUT}
               />
+              {mode === "register" && (
+                <p className="mt-1 text-xs text-stone-600">
+                  At least 8 characters, with a letter and a number. Creates a dedicated partner account for your restaurant.
+                </p>
+              )}
             </div>
+            {mode === "register" && (
+              <label className="flex items-start gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={consent}
+                  onChange={(e) => setConsent(e.target.checked)}
+                  className="mt-1 h-4 w-4"
+                />
+                <span>
+                  I agree to the Restaurant Partner Terms and Privacy Policy.
+                </span>
+              </label>
+            )}
             {error !== null && <ErrorBox error={error} />}
             <button type="submit" disabled={busy} className={BUTTON}>
-              {busy ? "Signing in..." : "Sign in to Kitchen Portal"}
+              {busy
+                ? "Please wait..."
+                : mode === "register"
+                  ? "Create Restaurant Owner Account"
+                  : "Sign in to Kitchen Portal"}
             </button>
           </form>
         )}
       </div>
 
       <p className="text-center text-sm text-stone-600">
-        Looking to order food?{" "}
+        Looking to order food as a customer?{" "}
         <Link href="/" className="font-semibold text-green-800 underline">
           Go to Customer Storefront
         </Link>

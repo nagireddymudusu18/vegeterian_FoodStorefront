@@ -6,11 +6,9 @@ import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import {
   errorMessage,
-  fleetApi,
   identity,
   notificationsApi,
   orders,
-  refreshSession,
   type Order,
 } from "@/lib/api";
 import { formatPaise } from "@/lib/money";
@@ -25,7 +23,14 @@ import {
   type AddressTag,
   type ConsentPurpose,
 } from "@/features/catalog";
-import { useFlag } from "@/features/flags";
+import {
+  ACCOUNT_DOMAIN_LABELS,
+  computeCustomerGroupOrderPricing,
+  createDefaultCustomerGroupProfile,
+  DEFAULT_ORG_CUSTOMER_GROUP_RULES,
+  DIETARY_COHORT_META,
+  LOYALTY_TIER_META,
+} from "@/features/customer-groups";
 import { StatusPill } from "@/features/orders";
 import { ConfirmDialog, ErrorBox, Spinner } from "@/components/ui";
 
@@ -176,18 +181,11 @@ function AddPhone({ onDone }: { onDone: () => void | Promise<unknown> }) {
   );
 }
 
-const ROLE_LINKS: Record<string, { label: string; href: string }> = {
-  RESTAURANT: { label: "Restaurant Console", href: "/restaurant" },
-  PARTNER: { label: "Delivery Partner App", href: "/partner" },
-  ADMIN: { label: "Admin Console", href: "/admin" },
-};
-
 export default function ProfilePage() {
   const router = useRouter();
   const [leaving, setLeaving] = useState(false);
   const { status, me, logout, reload } = useRequireAuth(leaving);
   const { clear } = useCart();
-  const deliveryModuleOn = useFlag("delivery_module");
   const {
     location,
     setLocation,
@@ -224,9 +222,8 @@ export default function ProfilePage() {
   const [recentOrders, setRecentOrders] = useState<Order[] | null>(null);
   const [unreadNotifs, setUnreadNotifs] = useState<number>(0);
 
-  // Section 5: Consents & Partner enrolment & Delete account
+  // Section 5: Consents & Delete account
   const [savingConsent, setSavingConsent] = useState<ConsentPurpose | null>(null);
-  const [enrollingPartner, setEnrollingPartner] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
@@ -359,20 +356,6 @@ export default function ProfilePage() {
     }
   };
 
-  const handleBecomePartner = async () => {
-    setEnrollingPartner(true);
-    try {
-      await fleetApi.becomePartner();
-      await refreshSession();
-      await reload();
-      toast.success("You are now enrolled as a delivery partner!");
-    } catch (err) {
-      toast.error(errorMessage(err));
-    } finally {
-      setEnrollingPartner(false);
-    }
-  };
-
   const signOut = () => {
     setLeaving(true);
     logout();
@@ -395,7 +378,16 @@ export default function ProfilePage() {
     }
   };
 
-  const isPartner = me.roles.includes("PARTNER");
+  const activeOrgRules = me.orgRules ?? DEFAULT_ORG_CUSTOMER_GROUP_RULES;
+  const customerGroup = me.customerGroup ?? createDefaultCustomerGroupProfile({}, activeOrgRules);
+  const tierMeta = LOYALTY_TIER_META[customerGroup.loyaltyTier];
+  const cohortMeta = DIETARY_COHORT_META[customerGroup.dietaryCohort];
+  const samplePerkPricing = computeCustomerGroupOrderPricing({
+    subtotalPaise: 40000,
+    loyaltyTier: customerGroup.loyaltyTier,
+    rules: activeOrgRules,
+  });
+  const accountDomainLabel = ACCOUNT_DOMAIN_LABELS[me.accountDomain ?? "CUSTOMER"];
 
   return (
     <div className="mx-auto max-w-5xl space-y-6 pb-8">
@@ -412,32 +404,26 @@ export default function ProfilePage() {
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
                 <h1 className="page-title truncate">{me.name || "Your profile"}</h1>
-                <span className="rounded-full bg-[#1B5E3A]/10 px-2.5 py-0.5 text-xs font-bold text-[#1B5E3A]">
-                  {me.status ?? "ACTIVE"}
+                <span className="rounded-md bg-[#1B5E3A]/10 px-2.5 py-0.5 text-xs font-bold text-[#1B5E3A]">
+                  {accountDomainLabel}
+                </span>
+                <span className={`rounded-md px-2.5 py-0.5 text-xs font-bold ${tierMeta.badgeClass}`}>
+                  {tierMeta.label}
+                </span>
+                <span className={`rounded-md px-2.5 py-0.5 text-xs font-bold ${cohortMeta.badgeClass}`}>
+                  {cohortMeta.shortLabel}
                 </span>
                 {memberSince && (
                   <span className="text-xs font-medium text-stone-500">Member since {memberSince}</span>
                 )}
               </div>
               <p className="mt-0.5 text-sm text-stone-600">
-                Manage your identity, Pure Veg &amp; allergen guardrails, delivery spots, and privacy controls.
+                Manage your personal details, dietary preferences, allergen alerts, saved addresses, and communication settings.
               </p>
             </div>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            {me.roles
-              .filter((r) => ROLE_LINKS[r])
-              .map((r) => (
-                <Link
-                  key={r}
-                  href={ROLE_LINKS[r].href}
-                  className="inline-flex items-center gap-1.5 rounded-xl border border-[#1B5E3A]/25 bg-[#1B5E3A]/5 px-3 py-1.5 text-xs font-bold text-[#1B5E3A] hover:bg-[#1B5E3A]/10"
-                >
-                  <span>{ROLE_LINKS[r].label}</span>
-                  <span aria-hidden="true">&rarr;</span>
-                </Link>
-              ))}
             <button
               type="button"
               onClick={signOut}
@@ -620,7 +606,7 @@ export default function ProfilePage() {
                   Saved Delivery Addresses &amp; Spots
                 </h2>
                 <p className="text-xs text-stone-600">
-                  Switch your active Bengaluru delivery pin or save building &amp; landmark notes.
+                  Switch your active delivery pin or save building &amp; landmark notes.
                 </p>
               </div>
               <div className="flex flex-wrap gap-2">
@@ -892,22 +878,77 @@ export default function ProfilePage() {
           </section>
         </div>
 
-        {/* Right Column: Section 2 (Dietary & Allergens) + Section 5 (Consents, Partner Enrolment & Danger Zone) */}
+        {/* Right Column: Customer Group & Org Perks + Section 2 (Dietary & Allergens) + Section 5 (Consents & Danger Zone) */}
         <div className="space-y-6 lg:col-span-5 min-w-0">
-          {/* SECTION 2: Dietary Guardrail & Personal Allergen Watchlist */}
+          {/* SECTION 2A: Veggo Pass & Loyalty Benefits */}
+          <section className="card space-y-4 p-5" aria-labelledby="sec-customer-group">
+            <div className="flex flex-wrap items-start justify-between gap-2 border-b border-stone-100 pb-3">
+              <div>
+                <h2 id="sec-customer-group" className="text-base font-bold text-stone-900">
+                  Veggo Pass &amp; Loyalty Benefits
+                </h2>
+                <p className="text-xs text-stone-600">
+                  Your membership tier and dietary profile perks are applied automatically at checkout.
+                </p>
+              </div>
+              <span className="rounded-md bg-stone-100 px-2 py-0.5 font-mono text-[11px] font-bold text-stone-700">
+                {customerGroup.assignmentMode === "ADMIN_PINNED" ? "Priority Assigned" : "Auto-Upgraded"}
+              </span>
+            </div>
+
+            <div className="space-y-3">
+              <div className="rounded-xl border border-stone-200/90 bg-[#FBF6EA]/60 p-3.5">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="text-xs font-bold uppercase tracking-wider text-stone-500">
+                    Loyalty Tier
+                  </span>
+                  <span className={`rounded-md px-2.5 py-0.5 text-xs font-bold ${tierMeta.badgeClass}`}>
+                    {tierMeta.label}
+                  </span>
+                </div>
+                <p className="mt-1.5 text-xs font-semibold text-stone-900">
+                  {samplePerkPricing.appliedRuleSummary}
+                </p>
+                <p className="mt-0.5 text-xs text-stone-600">{tierMeta.summary}</p>
+                <div className="mt-2.5 flex items-center justify-between border-t border-stone-200/70 pt-2 font-mono text-xs text-stone-600">
+                  <span>Completed orders: {customerGroup.completedOrdersCount}</span>
+                  <span>Spend: {formatPaise(customerGroup.lifetimeSpendPaise)}</span>
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-stone-200/90 bg-white p-3.5">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="text-xs font-bold uppercase tracking-wider text-stone-500">
+                    Dietary Profile
+                  </span>
+                  <span className={`rounded-md px-2.5 py-0.5 text-xs font-bold ${cohortMeta.badgeClass}`}>
+                    {cohortMeta.label}
+                  </span>
+                </div>
+                <p className="mt-1.5 text-xs text-stone-600">{cohortMeta.description}</p>
+                <p className="mt-2 text-[11px] text-stone-500">
+                  {activeOrgRules.enforceCohortDietLock
+                    ? "Strict dietary protection is active: checkout automatically verifies your cart against your dietary profile."
+                    : "Advisory dietary mode active."}
+                </p>
+              </div>
+            </div>
+          </section>
+
+          {/* SECTION 2: Dietary Preferences & Personal Allergen Watchlist */}
           <section className="card space-y-4 p-5" aria-labelledby="sec-diet">
             <div className="border-b border-stone-100 pb-3">
               <h2 id="sec-diet" className="text-base font-bold text-stone-900">
-                Dietary Guardrail &amp; Allergen Watchlist
+                Dietary Preferences &amp; Allergen Watchlist
               </h2>
               <p className="text-xs text-stone-600">
-                Synced with the storefront catalog and restaurant menus to flag ingredients you avoid.
+                Synced with restaurant menus to highlight or filter out ingredients you avoid.
               </p>
             </div>
 
             <div>
               <p className="text-xs font-bold uppercase tracking-wider text-stone-600">
-                Default Catalog Diet Mode
+                Default Menu Preference
               </p>
               <div className="mt-2 grid grid-cols-2 gap-2" role="group" aria-label="Default diet preference">
                 {DIET_OPTIONS.map((opt) => {
@@ -1006,14 +1047,14 @@ export default function ProfilePage() {
             </div>
           </section>
 
-          {/* SECTION 5A: Communication & DPDP Privacy Consents */}
+          {/* SECTION 5A: Communication & Privacy Preferences */}
           <section className="card space-y-4 p-5" aria-labelledby="sec-consents">
             <div className="border-b border-stone-100 pb-3">
               <h2 id="sec-consents" className="text-base font-bold text-stone-900">
-                Communication &amp; DPDP Consents
+                Communication &amp; Privacy Preferences
               </h2>
               <p className="text-xs text-stone-600">
-                Recorded with timestamped consent audit logs under the Digital Personal Data Protection Act.
+                Choose how we contact you about orders, offers, and dietary preferences.
               </p>
             </div>
 
@@ -1051,37 +1092,13 @@ export default function ProfilePage() {
             </div>
           </section>
 
-          {/* SECTION 5B: Delivery Partner Self-Enrolment */}
-          {deliveryModuleOn && !isPartner && (
-            <section className="card space-y-2.5 border border-[#1B5E3A]/25 bg-[#FBF6EA] p-5" aria-labelledby="sec-partner">
-              <h2 id="sec-partner" className="text-sm font-bold text-stone-900">
-                Deliver with Veggo Eats
-              </h2>
-              <p className="text-xs text-stone-600">
-                Have a two-wheeler or EV in Bengaluru? Enroll your account as a verified delivery partner to accept nearby Pure Veg orders.
-              </p>
-              <button
-                type="button"
-                disabled={enrollingPartner || !me.phone}
-                onClick={handleBecomePartner}
-                className="w-full rounded-xl bg-[#1B5E3A] px-4 py-2.5 text-xs font-bold text-white hover:bg-green-800 disabled:opacity-60"
-              >
-                {enrollingPartner
-                  ? "Enrolling..."
-                  : me.phone
-                    ? "Activate Delivery Partner role"
-                    : "Verify a mobile number first to enroll"}
-              </button>
-            </section>
-          )}
-
-          {/* SECTION 5C: Danger Zone (DPDP Right to Erasure) */}
+          {/* SECTION 5C: Danger Zone */}
           <section className="rounded-2xl border-2 border-red-200 bg-red-50 p-5" aria-labelledby="danger-h">
             <h2 id="danger-h" className="text-sm font-bold text-red-900">
-              Delete account (DPDP Right to Erasure)
+              Delete account
             </h2>
             <p className="mt-1 text-xs text-red-900">
-              Permanently delete your account, scrub encrypted personal data, and revoke all active sessions. This cannot be undone.
+              Permanently delete your account, remove your personal data, and sign out of all devices. This cannot be undone.
             </p>
             {deleteError && (
               <p role="alert" className="mt-2 text-xs font-semibold text-red-900">
