@@ -1,6 +1,11 @@
 target/
 node_modules/
 .next/
+.next-dev/
+storefront/.next/
+storefront/.next-dev/
+.vercel/
+.aistudio/
 .env
 *.pem
 *.class
@@ -9,3 +14,4 @@ deploy/local/
 .idea/
 .vscode/
 .DS_Store
+

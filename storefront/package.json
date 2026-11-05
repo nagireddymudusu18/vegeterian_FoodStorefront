@@ -4,8 +4,8 @@
   "private": true,
   "scripts": {
     "dev": "next dev -p 3000 -H 0.0.0.0",
-    "build": "next build",
-    "start": "next start -p 3000 -H 0.0.0.0",
+    "build": "node build-prod.mjs",
+    "start": "node start-prod.mjs",
     "lint": "tsc --noEmit",
     "test": "vitest run"
   },

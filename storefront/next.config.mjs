@@ -20,10 +20,12 @@ const PRIVATE_SOURCES = [
   "/notifications",
 ];
 
+const isVercel = Boolean(process.env.VERCEL);
+
 /** @type {(phase: string) => import('next').NextConfig} */
 const nextConfig = (phase) => ({
   distDir: phase === PHASE_DEVELOPMENT_SERVER ? ".next/cache/dev" : ".next",
-  ...(process.env.DOCKER_BUILD === "1" ? { output: "standalone" } : {}),
+  ...(phase !== PHASE_DEVELOPMENT_SERVER && !isVercel ? { output: "standalone" } : {}),
   outputFileTracingRoot: path.join(__dirname, ".."),
   devIndicators: false,
   reactStrictMode: true,
