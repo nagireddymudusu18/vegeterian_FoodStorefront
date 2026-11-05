@@ -22,12 +22,16 @@ const PRIVATE_SOURCES = [
 
 /** @type {(phase: string) => import('next').NextConfig} */
 const nextConfig = (phase) => ({
-  distDir: phase === PHASE_DEVELOPMENT_SERVER ? ".next/dev" : ".next/prod",
-  output: "standalone",
+  distDir: phase === PHASE_DEVELOPMENT_SERVER ? ".next/cache/dev" : ".next",
+  ...(process.env.DOCKER_BUILD === "1" ? { output: "standalone" } : {}),
   outputFileTracingRoot: path.join(__dirname, ".."),
   devIndicators: false,
   reactStrictMode: true,
   poweredByHeader: false,
+  webpack: (config) => {
+    config.cache = false;
+    return config;
+  },
   async headers() {
     const noindex = [{ key: "X-Robots-Tag", value: "noindex, nofollow" }];
     // Without NEXT_PUBLIC_ALLOW_INDEXING=true (sandbox) nothing is indexable; private areas never are.
