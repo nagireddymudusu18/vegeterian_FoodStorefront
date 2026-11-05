@@ -8,6 +8,17 @@ export function Footer() {
         <p>
           <span className="font-bold text-green-800">{BRAND.name}</span> · {BRAND.tagline}
         </p>
+        <nav aria-label="Portals" className="flex flex-wrap gap-x-4 gap-y-1 text-xs font-semibold text-stone-700">
+          <Link href="/restaurant" className="hover:text-green-800 hover:underline">
+            Restaurant Partner Portal
+          </Link>
+          <Link href="/partner" className="hover:text-green-800 hover:underline">
+            Delivery Partner Portal
+          </Link>
+          <Link href="/admin" className="hover:text-green-800 hover:underline">
+            Org Admin
+          </Link>
+        </nav>
         <nav aria-label="Legal" className="flex flex-wrap gap-x-4 gap-y-1 sm:ml-auto">
           <Link href="/terms" className="hover:underline">
             Terms
@@ -26,3 +37,4 @@ export function Footer() {
     </footer>
   );
 }
+

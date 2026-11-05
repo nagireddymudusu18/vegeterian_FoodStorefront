@@ -9,11 +9,11 @@ spring:
     url: ${DB_URL:jdbc:postgresql://localhost:5432/fleet}
     username: ${DB_USER:fleet}
     password: ${DB_PASSWORD:fleet}
-    # No standing connections: one is opened when an action needs the database and closed after it sits idle.
+    # Keep 1 warm connection per service so requests after >10s idle avoid Cloud SQL proxy handshake spikes.
     hikari:
-      minimum-idle: ${DB_POOL_MIN_IDLE:0}
+      minimum-idle: ${DB_POOL_MIN_IDLE:1}
       maximum-pool-size: ${DB_POOL_MAX:10}
-      idle-timeout: ${DB_POOL_IDLE_MS:10000}
+      idle-timeout: ${DB_POOL_IDLE_MS:300000}
   jpa:
     open-in-view: false
     hibernate:

@@ -65,6 +65,12 @@ public class Order {
     @Column(name = "idempotency_key")
     private String idempotencyKey;
 
+    @Column(name = "delivery_address", length = 200)
+    private String deliveryAddress;
+
+    @Column(name = "cooking_instructions", length = 200)
+    private String cookingInstructions;
+
     @Version
     private Long version;
 
@@ -196,5 +202,21 @@ public class Order {
 
     public List<OrderItem> getItems() {
         return items;
+    }
+
+    public String getDeliveryAddress() {
+        return deliveryAddress;
+    }
+
+    public void setDeliveryAddress(String deliveryAddress) {
+        this.deliveryAddress = deliveryAddress;
+    }
+
+    public String getCookingInstructions() {
+        return cookingInstructions;
+    }
+
+    public void setCookingInstructions(String cookingInstructions) {
+        this.cookingInstructions = cookingInstructions;
     }
 }

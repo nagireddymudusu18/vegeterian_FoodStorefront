@@ -44,8 +44,8 @@ public class FleetController {
     }
 
     @GetMapping("/me/deliveries")
-    public List<DeliveryView> mine(Authentication auth) {
-        return service.mine(subject(auth));
+    public List<DeliveryView> mine(Authentication auth, @RequestParam(defaultValue = "false") boolean history) {
+        return service.mine(subject(auth), history);
     }
 
     @GetMapping("/pool")

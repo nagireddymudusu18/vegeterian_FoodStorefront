@@ -51,6 +51,27 @@ public class FlagController {
         return Map.of("userId", users.grantRestaurantRole(body.email()));
     }
 
+    /** Re-publishes encrypted UserContactUpdated outbox events for existing verified users (Finding 11 backfill). */
+    @org.springframework.web.bind.annotation.PostMapping("/admin/contacts/backfill")
+    public Map<String, Integer> backfillContacts() {
+        return Map.of("published", users.backfillVerifiedContacts());
+    }
+
+    public record RolePatchRequest(@jakarta.validation.constraints.NotBlank String role, @NotNull Boolean enabled) {
+    }
+
+    /** Lists active platform accounts and their assigned portal roles for Org Admin RBAC oversight. */
+    @GetMapping("/admin/users")
+    public List<Dtos.MeResponse> listUsers() {
+        return users.listAllForAdmin();
+    }
+
+    /** Grants or revokes operational portal roles (RESTAURANT, PARTNER) on an active user account. */
+    @org.springframework.web.bind.annotation.PatchMapping("/admin/users/{userId}/roles")
+    public Dtos.MeResponse setUserRole(@PathVariable UUID userId, @Valid @RequestBody RolePatchRequest body) {
+        return users.updateOperationalRole(userId, body.role(), body.enabled());
+    }
+
     @GetMapping("/admin/flags")
     public List<FlagView> list() {
         return flags.list().stream().map(FlagView::of).toList();

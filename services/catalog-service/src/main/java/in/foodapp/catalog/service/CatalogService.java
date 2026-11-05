@@ -1,5 +1,6 @@
 package in.foodapp.catalog.service;
 
+import in.foodapp.catalog.api.BulkPriceUpdateRequest;
 import in.foodapp.catalog.api.MenuItemRequest;
 import in.foodapp.catalog.api.MenuItemView;
 import in.foodapp.catalog.api.RestaurantRequest;
@@ -44,8 +45,13 @@ public class CatalogService {
 
     @Transactional(readOnly = true)
     public List<RestaurantView> searchRestaurants(double lat, double lng, Integer radiusMeters, Diet diet, String q) {
+        return searchRestaurants(lat, lng, radiusMeters, diet, q, false);
+    }
+
+    @Transactional(readOnly = true)
+    public List<RestaurantView> searchRestaurants(double lat, double lng, Integer radiusMeters, Diet diet, String q, boolean includeClosed) {
         int radius = radiusMeters == null ? DEFAULT_RADIUS_METERS : radiusMeters;
-        return search.search(lat, lng, radius, diet, q);
+        return search.search(lat, lng, radius, diet, q, includeClosed);
     }
 
     @Transactional(readOnly = true)
@@ -101,6 +107,19 @@ public class CatalogService {
     }
 
     @Transactional
+    public RestaurantView setRestaurantStatus(UUID id, boolean open, Integer deliveryRadiusMeters, Caller caller) {
+        Restaurant r = requireRestaurant(id);
+        authorize(r, caller);
+        r.setOpen(open);
+        if (deliveryRadiusMeters != null && deliveryRadiusMeters >= 500) {
+            r.setDeliveryRadiusMeters(deliveryRadiusMeters);
+        }
+        restaurants.save(r);
+        publishRestaurant(r);
+        return RestaurantView.of(r, menuOf(id, null));
+    }
+
+    @Transactional
     public MenuItemView addItem(UUID restaurantId, MenuItemRequest req, Caller caller) {
         Restaurant r = requireRestaurant(restaurantId);
         authorize(r, caller);
@@ -134,6 +153,38 @@ public class CatalogService {
         payload.put("available", item.isAvailable());
         outbox.publish("MenuItemAvailabilityChanged", item.getId(), payload);
         return MenuItemView.of(item);
+    }
+
+    /** Bulk "86" / availability toggle across multiple menu items in a single transaction. */
+    @Transactional
+    public List<MenuItemView> setBulkAvailability(List<UUID> itemIds, boolean available, Caller caller) {
+        if (itemIds == null || itemIds.isEmpty()) {
+            return List.of();
+        }
+        return itemIds.stream()
+                .filter(Objects::nonNull)
+                .distinct()
+                .map(id -> setAvailability(id, available, caller))
+                .toList();
+    }
+
+    /** Bulk price update across multiple menu items in a single transaction. */
+    @Transactional
+    public List<MenuItemView> setBulkPrices(List<BulkPriceUpdateRequest.ItemPricePatch> updates, Caller caller) {
+        if (updates == null || updates.isEmpty()) {
+            return List.of();
+        }
+        return updates.stream()
+                .filter(Objects::nonNull)
+                .map(patch -> {
+                    MenuItem item = requireItem(patch.itemId());
+                    authorize(requireRestaurant(item.getRestaurantId()), caller);
+                    item.setPricePaise(Math.max(0, patch.pricePaise()));
+                    items.save(item);
+                    publishItem(item);
+                    return MenuItemView.of(item);
+                })
+                .toList();
     }
 
     // -------------------------------------------------------------- helpers

@@ -2,8 +2,8 @@
 
 import Link from "next/link";
 import { useAuth } from "@/features/auth";
+import { HeaderLocationChip } from "@/features/catalog";
 import { NotificationBell } from "@/features/notifications";
-import { identity } from "@/lib/api";
 import { BrandLogo } from "@/components/Logo";
 import { Sheet, SheetClose, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "@/components/shadcn/sheet";
 import { CartSheet } from "./CartSheet";
@@ -19,9 +19,6 @@ export function Header() {
 
   const links = [
     { href: "/track", label: "Track order" },
-    authed && identity.isAdmin(me) && { href: "/admin", label: "Admin" },
-    authed && me?.roles?.includes("RESTAURANT") && { href: "/restaurant", label: "Kitchen" },
-    authed && me?.roles?.includes("PARTNER") && { href: "/partner", label: "Deliveries" },
     authed && { href: "/orders", label: "Orders" },
   ].filter((l): l is NavLink => Boolean(l));
 
@@ -35,9 +32,10 @@ export function Header() {
   return (
     <header className="sticky top-0 z-30 border-b border-stone-200 bg-cream/90 backdrop-blur">
       <div className="mx-auto flex max-w-6xl items-center gap-2 px-4 py-2.5 sm:gap-3">
-        <Link href="/" aria-label="Veggo Eats home" className="min-w-0 rounded-lg">
+        <Link href="/" aria-label="Veggo Eats home" className="min-w-0 shrink-0 rounded-lg">
           <BrandLogo />
         </Link>
+        <HeaderLocationChip />
         <nav aria-label="Main" className="ml-auto flex items-center gap-1 text-sm sm:gap-2">
           <div className="hidden items-center gap-1 md:flex">
             {links.map((l) => (

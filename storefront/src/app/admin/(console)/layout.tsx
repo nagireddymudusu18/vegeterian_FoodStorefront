@@ -1,12 +1,15 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, type ReactNode } from "react";
+import { usePathname } from "next/navigation";
+import { useEffect, useState, type ReactNode } from "react";
 import { rolesFromAccessToken, useAuth } from "@/features/auth";
-import { identity } from "@/lib/api";
+import { deadLettersApi, identity, type DeadLetterService } from "@/lib/api";
 import { getTokens } from "@/lib/tokens";
 import { Spinner } from "@/components/ui";
 import { StaffHeader } from "@/shell/StaffHeader";
+
+const DEAD_LETTER_SERVICES: DeadLetterService[] = ["orders", "payments", "fleet", "notifications"];
 
 /**
  * Admin area. The server enforces the role on every /admin API call; this guard only decides what to render.
@@ -15,6 +18,9 @@ import { StaffHeader } from "@/shell/StaffHeader";
  */
 export default function AdminLayout({ children }: { children: ReactNode }) {
   const { status, me, logout } = useAuth();
+  const pathname = usePathname();
+  const [parkedCount, setParkedCount] = useState(0);
+  const [parkedServices, setParkedServices] = useState<string[]>([]);
 
   useEffect(() => {
     if (status === "anon") {
@@ -23,9 +29,36 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
     }
   }, [status]);
 
+  const roles = rolesFromAccessToken(getTokens()?.accessToken);
+  const isAdminSession = status === "authed" && !!me && roles.includes("ADMIN");
+
+  useEffect(() => {
+    if (!isAdminSession) return;
+    let active = true;
+    const checkDeadLetters = async () => {
+      const results = await Promise.allSettled(DEAD_LETTER_SERVICES.map((s) => deadLettersApi.list(s)));
+      if (!active) return;
+      let total = 0;
+      const affected: string[] = [];
+      results.forEach((r, i) => {
+        if (r.status === "fulfilled" && r.value.open > 0) {
+          total += r.value.open;
+          affected.push(`${DEAD_LETTER_SERVICES[i]} (${r.value.open})`);
+        }
+      });
+      setParkedCount(total);
+      setParkedServices(affected);
+    };
+    void checkDeadLetters();
+    const timer = setInterval(() => void checkDeadLetters(), 30_000);
+    return () => {
+      active = false;
+      clearInterval(timer);
+    };
+  }, [isAdminSession, pathname]);
+
   if (status !== "authed" || !me) return <Spinner label="Checking access" />;
 
-  const roles = rolesFromAccessToken(getTokens()?.accessToken);
   if (!roles.includes("ADMIN")) {
     const isAdminAccount = identity.isAdmin(me);
     return (
@@ -49,20 +82,34 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
       </main>
     );
   }
-  const isMain = roles.includes("SUPER_ADMIN");
   const links = [
     { href: "/admin", label: "Dashboard" },
     { href: "/admin/flags", label: "Feature flags" },
     { href: "/admin/deliveries", label: "Deliveries" },
     { href: "/admin/restaurants", label: "Restaurants" },
-    { href: "/admin/dead-letters", label: "Dead letters" },
-    ...(isMain ? [{ href: "/admin/team", label: "Team" }] : []),
+    { href: "/admin/refunds", label: "Refunds" },
+    { href: "/admin/dead-letters", label: "Dead letters", badge: parkedCount },
+    { href: "/admin/team", label: "Users & Roles" },
   ];
 
   return (
     <div className="min-h-screen">
       <StaffHeader area="Admin" homeHref="/admin" links={links} onLogout={logout} storeLabel="View store" widthClass="max-w-6xl" />
-      <main id="main" className="mx-auto w-full max-w-6xl px-4 py-6">
+      <main id="main" className="mx-auto w-full max-w-6xl space-y-4 px-4 py-6">
+        {parkedCount > 0 && pathname !== "/admin/dead-letters" && (
+          <div
+            role="alert"
+            className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-900"
+          >
+            <span>
+              <strong>Dead-letter alert:</strong> {parkedCount} event{parkedCount === 1 ? " is" : "s are"} parked across{" "}
+              <strong>{parkedServices.join(", ")}</strong>.
+            </span>
+            <Link href="/admin/dead-letters" className="shrink-0 font-bold text-red-900 underline">
+              Review dead letters &rarr;
+            </Link>
+          </div>
+        )}
         {children}
       </main>
     </div>

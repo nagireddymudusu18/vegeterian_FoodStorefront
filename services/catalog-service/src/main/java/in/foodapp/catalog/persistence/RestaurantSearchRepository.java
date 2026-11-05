@@ -20,20 +20,25 @@ public class RestaurantSearchRepository {
     }
 
     public List<RestaurantView> search(double lat, double lng, double radiusMeters, Diet diet, String q) {
+        return search(lat, lng, radiusMeters, diet, q, false);
+    }
+
+    public List<RestaurantView> search(double lat, double lng, double radiusMeters, Diet diet, String q, boolean includeClosed) {
         StringBuilder sql = new StringBuilder("""
                 SELECT r.id, r.name, r.fssai_number, r.kitchen_certification_level, r.lat, r.lng,
                        r.delivery_radius_meters, r.open, r.owner_user_id, r.cuisine,
                        ST_Distance(r.geog, p.pt) AS distance_meters
                 FROM restaurants r
                 CROSS JOIN (SELECT ST_SetSRID(ST_MakePoint(:lng, :lat), 4326)::geography AS pt) p
-                WHERE r.open
+                WHERE (:includeClosed OR r.open)
                   AND ST_DWithin(r.geog, p.pt, :radius)
-                  AND ST_DWithin(r.geog, p.pt, r.delivery_radius_meters)
+                  AND (:includeClosed OR ST_DWithin(r.geog, p.pt, r.delivery_radius_meters))
                 """);
         MapSqlParameterSource params = new MapSqlParameterSource()
                 .addValue("lat", lat)
                 .addValue("lng", lng)
-                .addValue("radius", radiusMeters);
+                .addValue("radius", radiusMeters)
+                .addValue("includeClosed", includeClosed);
 
         if (diet != null) {
             // column name comes from the enum, never from user input
