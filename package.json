@@ -1,0 +1,15 @@
+{
+  "name": "food-marketplace",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "storefront"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspace=storefront",
+    "build": "npm run build --workspace=storefront",
+    "start": "npm run start --workspace=storefront",
+    "lint": "npm run lint --workspace=storefront",
+    "test": "npm run test --workspace=storefront"
+  }
+}

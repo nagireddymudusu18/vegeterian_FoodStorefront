@@ -39,6 +39,34 @@ public class ContactPublisher {
         }
     }
 
+    /**
+     * Re-publishes verified contact details for an existing active user (Finding 11 backfill for accounts
+     * created before notification-service was deployed). Unverified emails and deleted users are skipped.
+     *
+     * @return true if a UserContactUpdated event was published for this user
+     */
+    public boolean backfillUser(User user) {
+        if (user == null || !user.isActive()) {
+            return false;
+        }
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("userId", user.getId().toString());
+        boolean hasVerifiedContact = false;
+        if (user.getPhoneEnc() != null) {
+            payload.put("phoneEnc", eventCipher.encrypt(pii.decrypt(user.getPhoneEnc())));
+            hasVerifiedContact = true;
+        }
+        if (user.getEmailEnc() != null && user.isEmailVerified()) {
+            payload.put("emailEnc", eventCipher.encrypt(pii.decrypt(user.getEmailEnc())));
+            hasVerifiedContact = true;
+        }
+        if (!hasVerifiedContact) {
+            return false;
+        }
+        outbox.publish("UserContactUpdated", user.getId(), payload);
+        return true;
+    }
+
     private void publish(User user, String field, String plaintext) {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("userId", user.getId().toString());

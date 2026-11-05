@@ -1,14 +1,17 @@
 "use client";
 
+import { usePathname } from "next/navigation";
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { identity, type Me } from "@/lib/api";
 import { getTokens, setTokens, subscribeTokens } from "@/lib/tokens";
+import { resolvePortalScope, type PortalScope } from "./roles";
 
 type Status = "loading" | "authed" | "anon";
 
 interface AuthCtx {
   status: Status;
   me: Me | null;
+  scope: PortalScope;
   /** Call after a successful OTP verification (tokens already stored). */
   reload: () => Promise<void>;
   logout: () => void;
@@ -17,11 +20,13 @@ interface AuthCtx {
 const Ctx = createContext<AuthCtx | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
+  const pathname = usePathname();
+  const scope = resolvePortalScope(pathname);
   const [status, setStatus] = useState<Status>("loading");
   const [me, setMe] = useState<Me | null>(null);
 
   const reload = useCallback(async () => {
-    if (!getTokens()) {
+    if (!getTokens(scope)) {
       setMe(null);
       setStatus("anon");
       return;
@@ -33,27 +38,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch {
       // 401 is handled (refresh -> redirect) in the api client; other errors leave us signed-out in the UI only.
       setMe(null);
-      setStatus(getTokens() ? "authed" : "anon");
+      setStatus(getTokens(scope) ? "authed" : "anon");
     }
-  }, []);
+  }, [scope]);
 
   useEffect(() => {
     void reload();
     return subscribeTokens(() => {
-      if (!getTokens()) {
+      if (!getTokens(scope)) {
         setMe(null);
         setStatus("anon");
       }
     });
-  }, [reload]);
+  }, [reload, scope]);
 
   const logout = useCallback(() => {
-    setTokens(null);
+    setTokens(null, scope);
     setMe(null);
     setStatus("anon");
-  }, []);
+  }, [scope]);
 
-  const value = useMemo(() => ({ status, me, reload, logout }), [status, me, reload, logout]);
+  const value = useMemo(() => ({ status, me, scope, reload, logout }), [status, me, scope, reload, logout]);
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
 
@@ -62,3 +67,4 @@ export function useAuth(): AuthCtx {
   if (!c) throw new Error("useAuth must be used inside AuthProvider");
   return c;
 }
+

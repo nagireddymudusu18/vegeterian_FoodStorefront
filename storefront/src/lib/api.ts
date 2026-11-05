@@ -1,6 +1,6 @@
 import { getTokens, setTokens } from "./tokens";
 
-export const API_BASE = (process.env.NEXT_PUBLIC_API_BASE || "http://localhost:8080").replace(/\/+$/, "");
+export const API_BASE = "";
 
 export type Service = "identity" | "catalog" | "orders" | "payments" | "fleet" | "notifications";
 export type Diet = "PURE_VEG" | "VEGAN" | "JAIN";
@@ -23,6 +23,8 @@ export interface Me {
   emailVerified?: boolean;
   hasPassword: boolean;
   roles: string[];
+  status?: string;
+  createdAt?: string;
 }
 
 /** Public, unauthenticated view returned by order tracking. */
@@ -41,6 +43,10 @@ export interface Restaurant {
   id: string;
   name: string;
   distanceMeters?: number;
+  deliveryRadiusMeters?: number;
+  lat?: number;
+  lng?: number;
+  ownerUserId?: string | null;
   kitchenCertificationLevel?: string | number | null;
   open: boolean;
   cuisine?: string;
@@ -86,14 +92,49 @@ export interface Order {
   totalPaise: number;
   items?: OrderItem[];
   deliveryOtp?: string | null;
+  deliveryAddress?: string | null;
+  cookingInstructions?: string | null;
+  cancellationReason?: string | null;
+  timeline?: { status: string; at: string; reason?: string | null }[];
   createdAt?: string;
+  updatedAt?: string;
   [k: string]: unknown;
 }
 
 export interface Payment {
   id: string;
+  orderId?: string;
+  customerId?: string;
+  amountPaise?: number;
+  currency?: string;
   status: string;
+  gateway?: string;
+  gatewayRef?: string | null;
+  failureReason?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
   [k: string]: unknown;
+}
+
+export interface RefundResponse {
+  refundId: string;
+  paymentId: string;
+  amountPaise: number;
+  status: string;
+  gatewayRef?: string | null;
+  createdAt: string;
+}
+
+export interface MenuItemPayload {
+  name: string;
+  description?: string;
+  pricePaise: number;
+  isPureVeg: boolean;
+  isVegan: boolean;
+  isJain: boolean;
+  containsAllergens: string[];
+  ingredients: string[];
+  available: boolean;
 }
 
 // ---------- Errors ----------
@@ -157,7 +198,7 @@ async function toApiError(res: Response): Promise<ApiError> {
 // ---------- Core request ----------
 
 interface ReqOptions {
-  method?: "GET" | "POST" | "PUT" | "DELETE";
+  method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
   body?: unknown;
   auth?: boolean;
   idempotencyKey?: string;
@@ -234,12 +275,23 @@ export const refreshSession = refreshTokens;
 
 export function redirectToLogin(): void {
   if (typeof window === "undefined") return;
-  const here = window.location.pathname + window.location.search;
-  if (window.location.pathname.startsWith("/login")) return;
-  if (window.location.pathname.startsWith("/admin")) {
+  const pathname = window.location.pathname;
+  const here = pathname + window.location.search;
+  if (pathname.startsWith("/login")) return;
+  if (pathname === "/admin" || pathname.startsWith("/admin/")) {
     // admins sign in on their own page, and the invite page is reachable without a session
-    if (/^\/admin\/(login|accept)/.test(window.location.pathname)) return;
+    if (/^\/admin\/(login|accept)/.test(pathname)) return;
     window.location.assign(`/admin/login?next=${encodeURIComponent(here)}`);
+    return;
+  }
+  if (pathname === "/restaurant" || pathname.startsWith("/restaurant/")) {
+    if (pathname.startsWith("/restaurant/login")) return;
+    window.location.assign(`/restaurant/login?next=${encodeURIComponent(here)}`);
+    return;
+  }
+  if (pathname === "/partner" || pathname.startsWith("/partner/")) {
+    if (pathname.startsWith("/partner/login")) return;
+    window.location.assign(`/partner/login?next=${encodeURIComponent(here)}`);
     return;
   }
   window.location.assign(`/login?next=${encodeURIComponent(here)}`);
@@ -369,6 +421,18 @@ export const identity = {
     }),
 
   me: () => request<Me>("identity", "/me", { auth: true }),
+  updateName: (name: string) =>
+    request<Me>("identity", "/me", { method: "PATCH", auth: true, body: { name: name.trim() } }),
+  recordConsent: (purpose: string, version: string, granted: boolean) =>
+    request<void>("identity", "/me/consents", {
+      method: "POST",
+      auth: true,
+      body: { purpose, version, granted },
+    }),
+  getPreferences: (signal?: AbortSignal) =>
+    request<Record<string, unknown>>("identity", "/me/preferences", { auth: true, signal }),
+  savePreferences: (prefs: Record<string, unknown>) =>
+    request<void>("identity", "/me/preferences", { method: "PUT", auth: true, body: prefs }),
   isAdmin: (me: Me | null) => !!me?.roles?.includes("ADMIN"),
   isSuperAdmin: (me: Me | null) => !!me?.roles?.includes("SUPER_ADMIN"),
   deleteMe: () => request<void>("identity", "/me", { method: "DELETE", auth: true }),
@@ -393,18 +457,67 @@ export const catalog = {
     request<Restaurant>("catalog", `/restaurants/${encodeURIComponent(id)}`, { signal }),
   menu: (id: string, diet?: Diet | null, signal?: AbortSignal) =>
     request<MenuItem[]>("catalog", `/restaurants/${encodeURIComponent(id)}/menu`, { query: { diet }, signal }),
+  addItem: (restaurantId: string, body: MenuItemPayload) =>
+    request<MenuItem>("catalog", `/restaurants/${encodeURIComponent(restaurantId)}/items`, {
+      method: "POST",
+      auth: true,
+      body,
+    }),
+  updateItem: (itemId: string, body: MenuItemPayload) =>
+    request<MenuItem>("catalog", `/items/${encodeURIComponent(itemId)}`, {
+      method: "PUT",
+      auth: true,
+      body,
+    }),
+  setAvailability: (itemId: string, available: boolean) =>
+    request<MenuItem>("catalog", `/items/${encodeURIComponent(itemId)}/availability`, {
+      method: "PATCH",
+      auth: true,
+      body: { available },
+    }),
+  setBulkAvailability: (itemIds: string[], available: boolean) =>
+    request<MenuItem[]>("catalog", "/items/availability", {
+      method: "PATCH",
+      auth: true,
+      body: { itemIds, available },
+    }),
+  setBulkPrices: (updates: { itemId: string; pricePaise: number }[]) =>
+    request<MenuItem[]>("catalog", "/items/price", {
+      method: "PATCH",
+      auth: true,
+      body: { updates },
+    }),
+  setRestaurantStatus: (restaurantId: string, open: boolean, deliveryRadiusMeters?: number) =>
+    request<Restaurant>("catalog", `/restaurants/${encodeURIComponent(restaurantId)}/status`, {
+      method: "PATCH",
+      auth: true,
+      body: {
+        open,
+        ...(deliveryRadiusMeters !== undefined ? { deliveryRadiusMeters } : {}),
+      },
+    }),
 };
 
 // ---------- Orders ----------
 
 export const orders = {
-  /** Sends only ids and quantities; the server computes every price. */
-  create: (restaurantId: string, lines: { itemId: string; quantity: number }[], idempotencyKey: string) =>
+  /** Sends only ids and quantities (plus optional delivery address / cooking instructions); the server computes every price. */
+  create: (
+    restaurantId: string,
+    lines: { itemId: string; quantity: number }[],
+    idempotencyKey: string,
+    meta?: { deliveryAddress?: string; cookingInstructions?: string },
+  ) =>
     request<Order>("orders", "/orders", {
       method: "POST",
       auth: true,
       idempotencyKey,
-      body: { restaurantId, lines },
+      body: {
+        restaurantId,
+        lines,
+        ...(meta?.deliveryAddress?.trim() ? { deliveryAddress: meta.deliveryAddress.trim() } : {}),
+        ...(meta?.cookingInstructions?.trim() ? { cookingInstructions: meta.cookingInstructions.trim() } : {}),
+      },
     }),
   get: (id: string, signal?: AbortSignal) =>
     request<Order>("orders", `/orders/${encodeURIComponent(id)}`, { auth: true, signal }),
@@ -419,8 +532,12 @@ export const orders = {
   /** Public lookup by order number; no sign-in needed. */
   track: (orderNumber: string, signal?: AbortSignal) =>
     request<TrackedOrder>("orders", `/orders/track/${encodeURIComponent(orderNumber.trim())}`, { signal }),
-  cancel: (id: string) =>
-    request<Order | undefined>("orders", `/orders/${encodeURIComponent(id)}/cancel`, { method: "POST", auth: true }),
+  cancel: (id: string, reason?: string) =>
+    request<Order | undefined>("orders", `/orders/${encodeURIComponent(id)}/cancel`, {
+      method: "POST",
+      auth: true,
+      ...(reason?.trim() ? { body: { reason: reason.trim() } } : {}),
+    }),
 };
 
 // ---------- Restaurant staff ----------
@@ -431,6 +548,7 @@ export interface StaffOrder {
   restaurantName: string | null;
   status: string;
   totalPaise: number;
+  cookingInstructions?: string | null;
   items: { name: string; quantity: number }[];
   createdAt: string;
   updatedAt: string;
@@ -457,9 +575,21 @@ export const payments = {
       idempotencyKey,
       body: { orderId, amountPaise },
     }),
+  get: (id: string, signal?: AbortSignal) =>
+    request<Payment>("payments", `/payments/${encodeURIComponent(id)}`, {
+      auth: true,
+      signal,
+    }),
+  refund: (id: string, amountPaise: number, idempotencyKey: string) =>
+    request<RefundResponse>("payments", `/payments/${encodeURIComponent(id)}/refund`, {
+      method: "POST",
+      auth: true,
+      idempotencyKey,
+      body: { amountPaise },
+    }),
 };
 
-// ---------- Admin team (main admin only) ----------
+// ---------- Admin team & User Role Directory ----------
 
 export interface TeamMember {
   userId: string;
@@ -475,6 +605,19 @@ export interface TeamInvite {
   expiresAt: string;
 }
 
+export interface AdminUser {
+  id: string;
+  name?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  emailVerified?: boolean;
+  hasPassword?: boolean;
+  roles: string[];
+  status?: string;
+  createdAt?: string;
+  main?: boolean;
+}
+
 export const adminTeam = {
   get: () => request<{ members: TeamMember[]; invites: TeamInvite[] }>("identity", "/admin/team", { auth: true }),
   invite: (email: string) =>
@@ -483,6 +626,16 @@ export const adminTeam = {
     request<void>("identity", `/admin/team/invites/${encodeURIComponent(id)}`, { method: "DELETE", auth: true }),
   removeMember: (userId: string) =>
     request<void>("identity", `/admin/team/members/${encodeURIComponent(userId)}`, { method: "DELETE", auth: true }),
+};
+
+export const adminUsers = {
+  list: (signal?: AbortSignal) => request<AdminUser[]>("identity", "/admin/users", { auth: true, signal }),
+  setRole: (userId: string, role: "RESTAURANT" | "PARTNER" | "ADMIN", enabled: boolean) =>
+    request<AdminUser>("identity", `/admin/users/${encodeURIComponent(userId)}/roles`, {
+      method: "PATCH",
+      auth: true,
+      body: { role, enabled },
+    }),
 };
 
 // ---------- Feature flags ----------
@@ -504,16 +657,45 @@ export const flagsApi = {
       auth: true,
       body: { enabled },
     }),
+  /** Re-publishes encrypted UserContactUpdated outbox events for existing verified users (Finding 11). */
+  backfillContacts: () =>
+    request<{ published: number }>("identity", "/admin/contacts/backfill", {
+      method: "POST",
+      auth: true,
+    }),
 };
 
 // ---------- Admin: restaurants and owners ----------
 
+export interface CreateRestaurantPayload {
+  name: string;
+  fssaiNumber: string;
+  kitchenCertificationLevel: "TIER_1_EXCLUSIVE_VEG" | "TIER_2_SEGREGATED_KITCHEN";
+  lat: number;
+  lng: number;
+  deliveryRadiusMeters: number;
+  open?: boolean;
+  cuisine?: string;
+}
+
 export const adminRestaurants = {
-  /** The public search with a radius wide enough to cover the whole country from the default city centre. */
+  /** The public search with a radius wide enough to cover the whole country from the default city centre, including closed outlets. */
   list: (signal?: AbortSignal) =>
     request<Restaurant[]>("catalog", "/restaurants", {
-      query: { lat: 12.9716, lng: 77.5946, radiusMeters: 3_000_000 },
+      query: { lat: 12.9716, lng: 77.5946, radiusMeters: 3_000_000, includeClosed: "true" },
       signal,
+    }),
+  create: (body: CreateRestaurantPayload) =>
+    request<Restaurant>("catalog", "/restaurants", {
+      method: "POST",
+      auth: true,
+      body: {
+        ...body,
+        name: body.name.trim(),
+        fssaiNumber: body.fssaiNumber.trim(),
+        cuisine: body.cuisine?.trim() || "Pure Veg",
+        open: body.open ?? true,
+      },
     }),
   /** Gives the account registered with this email the RESTAURANT role. */
   grantOwner: (email: string) =>
@@ -577,6 +759,8 @@ export interface Delivery {
   orderId: string;
   orderNumber: string;
   restaurantName?: string | null;
+  deliveryAddress?: string | null;
+  payoutPaise?: number;
   status: DeliveryStatus;
   partnerId?: string | null;
   createdAt: string;
@@ -605,7 +789,12 @@ export const fleetApi = {
   setOnline: (online: boolean) =>
     request<Partner>("fleet", "/fleet/me/online", { method: "PUT", auth: true, body: { online } }),
   pool: (signal?: AbortSignal) => request<Delivery[]>("fleet", "/fleet/pool", { auth: true, signal }),
-  mine: (signal?: AbortSignal) => request<Delivery[]>("fleet", "/fleet/me/deliveries", { auth: true, signal }),
+  mine: (history = false, signal?: AbortSignal) =>
+    request<Delivery[]>("fleet", "/fleet/me/deliveries", {
+      auth: true,
+      query: { history: String(history) },
+      signal,
+    }),
   accept: (orderId: string) =>
     request<Delivery>("fleet", `/fleet/deliveries/${encodeURIComponent(orderId)}/accept`, {
       method: "POST",

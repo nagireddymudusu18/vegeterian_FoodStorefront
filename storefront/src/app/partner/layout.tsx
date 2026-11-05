@@ -1,5 +1,6 @@
 "use client";
 
+import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
 import { useRequireAuth } from "@/features/auth";
 import { useFlag } from "@/features/flags";
@@ -8,9 +9,12 @@ import { StaffHeader } from "@/shell/StaffHeader";
 
 /** Delivery partner area. Hidden behind the delivery_module flag (identity-service) and runs against fleet-service. */
 export default function PartnerLayout({ children }: { children: ReactNode }) {
-  const { status, logout } = useRequireAuth();
+  const pathname = usePathname();
+  const isLoginPage = pathname === "/partner/login";
+  const { status, logout } = useRequireAuth(isLoginPage, "/partner/login");
   const enabled = useFlag("delivery_module");
 
+  if (isLoginPage) return <>{children}</>;
   if (status !== "authed") return <Spinner label="Checking access" />;
 
   return (
@@ -29,3 +33,4 @@ export default function PartnerLayout({ children }: { children: ReactNode }) {
     </div>
   );
 }
+

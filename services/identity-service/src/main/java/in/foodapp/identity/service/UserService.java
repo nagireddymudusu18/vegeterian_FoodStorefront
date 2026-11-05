@@ -100,6 +100,38 @@ public class UserService {
                 user.getPasswordHash() != null, roles.rolesOf(user), user.getStatus(), user.getCreatedAt());
     }
 
+    @Transactional
+    public Dtos.MeResponse updateName(UUID userId, String rawName) {
+        String trimmed = rawName == null ? "" : rawName.trim();
+        if (trimmed.isEmpty() || trimmed.length() > 80) {
+            throw ApiException.badRequest("Enter a valid display name (1 to 80 characters)");
+        }
+        User user = activeUser(userId);
+        user.setName(cipher.encrypt(trimmed));
+        users.save(user);
+        return me(userId);
+    }
+
+    @Transactional(readOnly = true)
+    public String getPreferences(UUID userId) {
+        User user = activeUser(userId);
+        if (user.getPreferencesEnc() == null) {
+            return "{}";
+        }
+        return cipher.decrypt(user.getPreferencesEnc());
+    }
+
+    @Transactional
+    public void savePreferences(UUID userId, String rawJson) {
+        String payload = rawJson == null ? "{}" : rawJson.trim();
+        if (payload.length() > 16384) {
+            throw ApiException.badRequest("Preferences payload exceeds 16 KB limit");
+        }
+        User user = activeUser(userId);
+        user.setPreferencesEnc(cipher.encrypt(payload));
+        users.save(user);
+    }
+
     /** Gives the account the PARTNER (delivery) role. Needs a verified phone so riders are reachable. */
     @Transactional
     public void enrollPartner(UUID userId) {
@@ -160,6 +192,42 @@ public class UserService {
         user.markDeleted(clock.instant());
         users.save(user);
         outbox.publish("UserDeleted", userId, Map.of("userId", userId.toString()));
+    }
+
+    /** Admin action: re-publishes UserContactUpdated events for all active users with verified phone or email. */
+    @Transactional
+    public int backfillVerifiedContacts() {
+        int published = 0;
+        for (User u : users.findAll()) {
+            if (contacts.backfillUser(u)) {
+                published++;
+            }
+        }
+        return published;
+    }
+
+    @Transactional(readOnly = true)
+    public java.util.List<Dtos.MeResponse> listAllForAdmin() {
+        return users.findAll().stream()
+                .filter(User::isActive)
+                .map(u -> me(u.getId()))
+                .toList();
+    }
+
+    @Transactional
+    public Dtos.MeResponse updateOperationalRole(UUID userId, String role, boolean enabled) {
+        String normalizedRole = role == null ? "" : role.trim().toUpperCase(Locale.ROOT);
+        if (!"RESTAURANT".equals(normalizedRole) && !"PARTNER".equals(normalizedRole)) {
+            throw ApiException.badRequest("Only RESTAURANT and PARTNER operational roles can be toggled here");
+        }
+        User user = activeUser(userId);
+        if (enabled) {
+            user.addRole(normalizedRole);
+        } else {
+            user.removeRole(normalizedRole);
+        }
+        users.save(user);
+        return me(userId);
     }
 
     private User activeUser(UUID userId) {

@@ -1,4 +1,5 @@
 /** Pure cart logic (no React, no storage) so it can be unit-tested. */
+import type { DietFilter } from "../catalog/diet";
 
 export interface CartLine {
   itemId: string;
@@ -6,6 +7,10 @@ export interface CartLine {
   /** Unit price in paise as last seen in the catalog: ESTIMATE only. The server recomputes. */
   pricePaise: number;
   quantity: number;
+  isPureVeg?: boolean;
+  isVegan?: boolean;
+  isJain?: boolean;
+  containsAllergens?: string[];
 }
 
 export interface Cart {
@@ -22,6 +27,30 @@ export interface AddItem {
   itemId: string;
   name: string;
   pricePaise: number;
+  isPureVeg?: boolean;
+  isVegan?: boolean;
+  isJain?: boolean;
+  containsAllergens?: string[];
+}
+
+function withMeta(target: CartLine, src: Partial<AddItem>): CartLine {
+  const out: CartLine = {
+    itemId: target.itemId,
+    name: target.name,
+    pricePaise: target.pricePaise,
+    quantity: target.quantity,
+  };
+  const pureVeg = src.isPureVeg ?? target.isPureVeg;
+  const vegan = src.isVegan ?? target.isVegan;
+  const jain = src.isJain ?? target.isJain;
+  const allergens = src.containsAllergens ?? target.containsAllergens;
+  if (typeof pureVeg === "boolean") out.isPureVeg = pureVeg;
+  if (typeof vegan === "boolean") out.isVegan = vegan;
+  if (typeof jain === "boolean") out.isJain = jain;
+  if (Array.isArray(allergens) && allergens.length > 0) {
+    out.containsAllergens = allergens.filter((a): a is string => typeof a === "string" && a.trim().length > 0);
+  }
+  return out;
 }
 
 /** True when adding from `restaurantId` would discard a non-empty cart of another restaurant. */
@@ -43,12 +72,18 @@ export function addItem(
       ...base,
       lines: base.lines.map((l) =>
         l.itemId === item.itemId
-          ? { ...l, pricePaise: item.pricePaise, quantity: Math.min(MAX_QTY_PER_LINE, l.quantity + 1) }
+          ? withMeta({ ...l, pricePaise: item.pricePaise, quantity: Math.min(MAX_QTY_PER_LINE, l.quantity + 1) }, item)
           : l,
       ),
     };
   }
-  return { ...base, lines: [...base.lines, { ...item, quantity: 1 }] };
+  return {
+    ...base,
+    lines: [
+      ...base.lines,
+      withMeta({ itemId: item.itemId, name: item.name, pricePaise: item.pricePaise, quantity: 1 }, item),
+    ],
+  };
 }
 
 export function decrementItem(cart: Cart, itemId: string): Cart {
@@ -79,6 +114,31 @@ export function estimatedSubtotalPaise(cart: Cart): number {
   return cart.lines.reduce((sum, l) => sum + l.pricePaise * l.quantity, 0);
 }
 
+/**
+ * Returns cart lines that conflict with the customer's selected diet filter,
+ * or non-veg items (`isPureVeg === false`) even when the filter is `"ALL"`.
+ */
+export function cartDietConflicts(cart: Cart, diet: DietFilter): CartLine[] {
+  return cart.lines.filter((l) => {
+    if (l.isPureVeg === false) return true;
+    if (diet === "VEGAN" && l.isVegan === false) return true;
+    if (diet === "JAIN" && l.isJain === false) return true;
+    return false;
+  });
+}
+
+/** Deduplicated, sorted list of allergens present across all lines in the cart. */
+export function cartAllergens(cart: Cart): string[] {
+  const set = new Set<string>();
+  for (const l of cart.lines) {
+    for (const a of l.containsAllergens ?? []) {
+      const trimmed = a.trim().toLowerCase();
+      if (trimmed) set.add(trimmed);
+    }
+  }
+  return [...set].sort();
+}
+
 /** Validates/sanitises untrusted JSON read from localStorage. */
 export function parseCart(raw: string | null): Cart {
   if (!raw) return emptyCart;
@@ -87,15 +147,17 @@ export function parseCart(raw: string | null): Cart {
     if (!v || typeof v !== "object" || !Array.isArray(v.lines) || typeof v.restaurantId !== "string") {
       return emptyCart;
     }
-    const lines = v.lines.filter(
-      (l): l is CartLine =>
-        !!l &&
-        typeof l.itemId === "string" &&
-        typeof l.name === "string" &&
-        Number.isInteger(l.pricePaise) &&
-        Number.isInteger(l.quantity) &&
-        l.quantity > 0,
-    );
+    const lines = v.lines
+      .filter(
+        (l): l is CartLine =>
+          !!l &&
+          typeof l.itemId === "string" &&
+          typeof l.name === "string" &&
+          Number.isInteger(l.pricePaise) &&
+          Number.isInteger(l.quantity) &&
+          l.quantity > 0,
+      )
+      .map((l) => withMeta(l, l));
     if (lines.length === 0) return emptyCart;
     return {
       restaurantId: v.restaurantId,

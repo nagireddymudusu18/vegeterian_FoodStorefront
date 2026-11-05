@@ -50,8 +50,9 @@ public class OrderController {
     }
 
     @PostMapping("/{id}/cancel")
-    public OrderView cancel(Authentication auth, @PathVariable UUID id) {
-        return service.cancel(id, subject(auth));
+    public OrderView cancel(Authentication auth, @PathVariable UUID id,
+                            @Valid @RequestBody(required = false) ReasonRequest body) {
+        return service.cancel(id, subject(auth), body == null ? null : body.reason());
     }
 
     // ---- merchant / admin transitions (role-checked in SecurityConfig, per-restaurant ownership in OrderService)

@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { rolesFromAccessToken, safeAdminNext } from "./roles";
+import {
+  portalLoginPath,
+  resolvePortalScope,
+  rolesFromAccessToken,
+  safeAdminNext,
+  safePartnerNext,
+  safeRestaurantNext,
+} from "./roles";
 
 function token(claims: object): string {
   const b64 = (o: object) => btoa(JSON.stringify(o)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
@@ -23,6 +30,26 @@ describe("rolesFromAccessToken", () => {
   });
 });
 
+describe("resolvePortalScope and portalLoginPath", () => {
+  it("maps pathnames to the correct portal scope", () => {
+    expect(resolvePortalScope("/")).toBe("customer");
+    expect(resolvePortalScope("/orders/123")).toBe("customer");
+    expect(resolvePortalScope("/admin")).toBe("admin");
+    expect(resolvePortalScope("/admin/restaurants")).toBe("admin");
+    expect(resolvePortalScope("/restaurant")).toBe("restaurant");
+    expect(resolvePortalScope("/restaurant/menu")).toBe("restaurant");
+    expect(resolvePortalScope("/partner")).toBe("partner");
+    expect(resolvePortalScope("/partner/login")).toBe("partner");
+  });
+
+  it("returns the dedicated login path for each portal", () => {
+    expect(portalLoginPath("customer")).toBe("/login");
+    expect(portalLoginPath("admin")).toBe("/admin/login");
+    expect(portalLoginPath("restaurant")).toBe("/restaurant/login");
+    expect(portalLoginPath("partner")).toBe("/partner/login");
+  });
+});
+
 describe("safeAdminNext", () => {
   it("keeps admin paths", () => {
     expect(safeAdminNext("/admin/flags")).toBe("/admin/flags");
@@ -34,3 +61,22 @@ describe("safeAdminNext", () => {
     }
   });
 });
+
+describe("safeRestaurantNext and safePartnerNext", () => {
+  it("keeps restaurant paths and rejects login or cross-portal paths", () => {
+    expect(safeRestaurantNext("/restaurant")).toBe("/restaurant");
+    expect(safeRestaurantNext("/restaurant/menu")).toBe("/restaurant/menu");
+    for (const bad of [null, undefined, "", "/", "/admin", "/partner", "/restaurant/login", "//evil.com"]) {
+      expect(safeRestaurantNext(bad)).toBe("/restaurant");
+    }
+  });
+
+  it("keeps partner paths and rejects login or cross-portal paths", () => {
+    expect(safePartnerNext("/partner")).toBe("/partner");
+    expect(safePartnerNext("/partner?tab=pool")).toBe("/partner?tab=pool");
+    for (const bad of [null, undefined, "", "/", "/admin", "/restaurant", "/partner/login", "//evil.com"]) {
+      expect(safePartnerNext(bad)).toBe("/partner");
+    }
+  });
+});
+

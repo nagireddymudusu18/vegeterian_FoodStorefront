@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   addItem,
+  cartAllergens,
+  cartDietConflicts,
   decrementItem,
   emptyCart,
   estimatedSubtotalPaise,
@@ -77,5 +79,48 @@ describe("cart", () => {
       lines: [{ itemId: "i1", name: "d", pricePaise: 1.5, quantity: 1 }, { itemId: "i2", name: "e", pricePaise: 100, quantity: 2 }],
     });
     expect(parseCart(bad).lines).toHaveLength(1);
+  });
+
+  it("detects dietary conflicts and aggregates allergens across cart lines", () => {
+    const paneer = {
+      itemId: "p1",
+      name: "Paneer Butter Masala",
+      pricePaise: 24900,
+      isPureVeg: true,
+      isVegan: false,
+      isJain: false,
+      containsAllergens: ["milk"],
+    };
+    const jainSabudana = {
+      itemId: "j1",
+      name: "Sabudana Khichdi",
+      pricePaise: 13900,
+      isPureVeg: true,
+      isVegan: true,
+      isJain: true,
+      containsAllergens: ["peanuts"],
+    };
+    const chicken = {
+      itemId: "c1",
+      name: "Butter Chicken",
+      pricePaise: 32900,
+      isPureVeg: false,
+      isVegan: false,
+      isJain: false,
+      containsAllergens: ["Milk"],
+    };
+
+    const vegCart = addItem(addItem(emptyCart, r1, paneer), r1, jainSabudana);
+    expect(cartDietConflicts(vegCart, "PURE_VEG")).toEqual([]);
+    expect(cartDietConflicts(vegCart, "ALL")).toEqual([]);
+    expect(cartDietConflicts(vegCart, "VEGAN").map((l) => l.itemId)).toEqual(["p1"]);
+    expect(cartDietConflicts(vegCart, "JAIN").map((l) => l.itemId)).toEqual(["p1"]);
+    expect(cartAllergens(vegCart)).toEqual(["milk", "peanuts"]);
+
+    const mixedCart = addItem(vegCart, r1, chicken);
+    // Non-veg item is always flagged even when filter is ALL or PURE_VEG
+    expect(cartDietConflicts(mixedCart, "ALL").map((l) => l.itemId)).toEqual(["c1"]);
+    expect(cartDietConflicts(mixedCart, "PURE_VEG").map((l) => l.itemId)).toEqual(["c1"]);
+    expect(cartAllergens(mixedCart)).toEqual(["milk", "peanuts"]);
   });
 });

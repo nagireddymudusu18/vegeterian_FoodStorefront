@@ -3,120 +3,21 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { catalog, type Restaurant } from "@/lib/api";
-import { dietParam, usePrefs, certificationTier, CertBadge, OpenBadge, type DietFilter } from "@/features/catalog";
+import {
+  DIET_OPTIONS,
+  dietParam,
+  usePrefs,
+  certificationTier,
+  CertBadge,
+  OpenBadge,
+  LocationPicker,
+  openLocationPickerModal,
+  MapPinSvg,
+} from "@/features/catalog";
 import { formatDistance } from "@/lib/money";
 import { Empty, ErrorBox } from "@/components/ui";
 import { RestaurantGridSkeleton } from "@/components/Skeletons";
 import { FadeInItem } from "@/components/motion";
-
-function LocationPicker() {
-  const { location, setLocation } = usePrefs();
-  const [lat, setLat] = useState(String(location.lat));
-  const [lng, setLng] = useState(String(location.lng));
-  const [msg, setMsg] = useState<string | null>(null);
-  const [locating, setLocating] = useState(false);
-
-  useEffect(() => {
-    setLat(String(location.lat));
-    setLng(String(location.lng));
-  }, [location.lat, location.lng]);
-
-  const useMyLocation = () => {
-    setMsg(null);
-    if (!("geolocation" in navigator)) {
-      setMsg("Geolocation is not available in this browser. Enter coordinates instead.");
-      return;
-    }
-    setLocating(true);
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        setLocating(false);
-        setLocation({
-          lat: Number(pos.coords.latitude.toFixed(5)),
-          lng: Number(pos.coords.longitude.toFixed(5)),
-          label: "My location",
-        });
-      },
-      (err) => {
-        setLocating(false);
-        setMsg(`Could not get your location (${err.message}). Enter coordinates instead.`);
-      },
-      { enableHighAccuracy: false, timeout: 10000, maximumAge: 300000 },
-    );
-  };
-
-  const apply = (e: React.FormEvent) => {
-    e.preventDefault();
-    const la = Number(lat);
-    const ln = Number(lng);
-    if (!Number.isFinite(la) || !Number.isFinite(ln) || Math.abs(la) > 90 || Math.abs(ln) > 180 || lat.trim() === "" || lng.trim() === "") {
-      setMsg("Latitude must be between -90 and 90 and longitude between -180 and 180.");
-      return;
-    }
-    setMsg(null);
-    setLocation({ lat: la, lng: ln, label: "Custom location" });
-  };
-
-  return (
-    <details className="rounded-2xl border border-stone-200 bg-white px-4 py-3 text-sm shadow-sm">
-      <summary className="flex cursor-pointer items-center gap-2 font-medium">
-        <span aria-hidden="true">📍</span>
-        <span className="min-w-0 flex-1 truncate">
-          Delivering to <strong>{location.label}</strong>
-        </span>
-        <span className="font-semibold text-green-800 underline">Change</span>
-      </summary>
-      <div className="mt-3 space-y-3">
-        <p className="text-xs text-stone-600">
-          Current coordinates: {location.lat.toFixed(4)}, {location.lng.toFixed(4)}
-        </p>
-        <button
-          type="button"
-          onClick={useMyLocation}
-          disabled={locating}
-          className="rounded-lg bg-green-700 px-3 py-2 font-medium text-white hover:bg-green-800 disabled:opacity-60"
-        >
-          {locating ? "Locating..." : "Use my current location"}
-        </button>
-        <form onSubmit={apply} className="flex flex-wrap items-end gap-2">
-          <label className="flex flex-col gap-1">
-            <span className="text-xs text-stone-600">Latitude</span>
-            <input
-              value={lat}
-              onChange={(e) => setLat(e.target.value)}
-              inputMode="decimal"
-              className="w-32 rounded border border-stone-300 px-2 py-1.5"
-            />
-          </label>
-          <label className="flex flex-col gap-1">
-            <span className="text-xs text-stone-600">Longitude</span>
-            <input
-              value={lng}
-              onChange={(e) => setLng(e.target.value)}
-              inputMode="decimal"
-              className="w-32 rounded border border-stone-300 px-2 py-1.5"
-            />
-          </label>
-          <button type="submit" className="rounded-lg border border-stone-300 px-3 py-1.5 font-medium hover:bg-stone-100">
-            Apply
-          </button>
-          <button
-            type="button"
-            onClick={() => setLocation({ lat: 12.9716, lng: 77.5946, label: "Bengaluru (default)" })}
-            className="rounded-lg px-3 py-1.5 text-stone-600 underline"
-          >
-            Reset to Bengaluru
-          </button>
-        </form>
-        {msg && (
-          <p role="alert" className="text-red-700">
-            {msg}
-          </p>
-        )}
-      </div>
-    </details>
-  );
-}
 
 const TINTS = [
   { bg: "bg-haldi", ink: "text-green-800" },
@@ -170,13 +71,6 @@ function RestaurantCard({ r, index }: { r: Restaurant; index: number }) {
     </FadeInItem>
   );
 }
-
-const DIET_CHIPS: { value: DietFilter; label: string }[] = [
-  { value: "ALL", label: "All" },
-  { value: "PURE_VEG", label: "Pure Veg" },
-  { value: "VEGAN", label: "Vegan" },
-  { value: "JAIN", label: "Jain" },
-];
 
 type Quick = "open" | "tier1" | "tier2" | "near";
 
@@ -278,7 +172,7 @@ export default function HomePage() {
       <section aria-label="Filters" className="space-y-3">
         <h2 className="sr-only">Filter restaurants</h2>
         <div role="radiogroup" aria-label="Diet preference" className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 sm:mx-0 sm:px-0">
-          {DIET_CHIPS.map((t) => {
+          {DIET_OPTIONS.map((t) => {
             const active = diet === t.value;
             return (
               <button
@@ -296,6 +190,24 @@ export default function HomePage() {
             );
           })}
         </div>
+
+        {diet === "ALL" && (
+          <div
+            role="status"
+            className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-amber-300 bg-amber-50 px-4 py-2.5 text-sm text-amber-900"
+          >
+            <span>
+              <strong>All menus shown:</strong> Tier 2 segregated kitchens may list non-vegetarian dishes under &ldquo;All&rdquo;.
+            </span>
+            <button
+              type="button"
+              onClick={() => setDiet("PURE_VEG")}
+              className="shrink-0 font-semibold text-green-800 underline hover:text-green-900"
+            >
+              Switch to Pure Veg
+            </button>
+          </div>
+        )}
 
         <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0">
           <div className="flex shrink-0 gap-2 sm:flex-wrap" role="group" aria-label="Quick filters">
@@ -360,20 +272,144 @@ export default function HomePage() {
         )}
       </section>
 
-      <section aria-label="How it works" className="grid gap-4 rounded-3xl bg-white p-6 shadow-sm ring-1 ring-stone-200 sm:grid-cols-3">
-        {[
-          ["📍", "Pick your spot", "Set your location to see kitchens that deliver to you."],
-          ["🛒", "Order as a guest", "No account needed. Verify your phone with a quick OTP."],
-          ["🔎", "Track with your number", "Follow your order any time using the order number."],
-        ].map(([icon, title, text]) => (
-          <div key={title}>
-            <span aria-hidden="true" className="text-3xl">
-              {icon}
-            </span>
-            <h3 className="mt-2 font-bold">{title}</h3>
-            <p className="text-sm text-stone-600">{text}</p>
+      <section
+        aria-labelledby="how-it-works-h"
+        className="rounded-3xl border border-stone-200 bg-white p-5 shadow-2xs sm:p-6"
+      >
+        <div className="flex flex-wrap items-end justify-between gap-2 border-b border-stone-100 pb-4">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-[0.14em] text-green-800">
+              How Veggo Eats works
+            </p>
+            <h2 id="how-it-works-h" className="mt-1 text-lg font-extrabold text-ink sm:text-xl">
+              From certified kitchen to your doorstep
+            </h2>
           </div>
-        ))}
+          <span className="rounded-lg bg-haldi/70 px-2.5 py-1 text-xs font-semibold text-amber-950 ring-1 ring-amber-300/60">
+            FSSAI &amp; Veg-Tier Verified
+          </span>
+        </div>
+
+        <div className="mt-4 grid gap-4 sm:grid-cols-3">
+          {/* Step 1: Pick your spot */}
+          <div className="flex flex-col justify-between rounded-2xl border border-stone-200/80 bg-cream/55 p-4 transition hover:border-green-700/40">
+            <div>
+              <div className="flex items-center justify-between gap-2">
+                <span
+                  aria-hidden="true"
+                  className="flex h-10 w-10 items-center justify-center rounded-xl bg-green-100 text-green-800 ring-1 ring-green-200"
+                >
+                  <MapPinSvg className="h-5 w-5" />
+                </span>
+                <span className="rounded-md bg-white px-2 py-0.5 font-mono text-[11px] font-bold tracking-wider text-stone-500 ring-1 ring-stone-200">
+                  STEP 01
+                </span>
+              </div>
+              <h3 className="mt-3 text-base font-extrabold text-ink">Pick your spot</h3>
+              <p className="mt-1 text-sm leading-relaxed text-stone-600">
+                Choose a Bengaluru neighbourhood or drop a pin on the map to see certified kitchens that deliver to your door.
+              </p>
+            </div>
+            <div className="mt-4 border-t border-stone-200/70 pt-3">
+              <button
+                type="button"
+                onClick={openLocationPickerModal}
+                className="inline-flex items-center gap-1.5 text-xs font-bold text-green-800 hover:text-green-950 hover:underline"
+              >
+                <span>Change spot ({location.label})</span>
+                <span aria-hidden="true">→</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Step 2: Order as a guest */}
+          <div className="flex flex-col justify-between rounded-2xl border border-stone-200/80 bg-cream/55 p-4 transition hover:border-green-700/40">
+            <div>
+              <div className="flex items-center justify-between gap-2">
+                <span
+                  aria-hidden="true"
+                  className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-100 text-amber-900 ring-1 ring-amber-200"
+                >
+                  <svg
+                    viewBox="0 0 24 24"
+                    className="h-5 w-5"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z" />
+                    <path d="M3 6h18" />
+                    <path d="M16 10a4 4 0 0 1-8 0" />
+                  </svg>
+                </span>
+                <span className="rounded-md bg-white px-2 py-0.5 font-mono text-[11px] font-bold tracking-wider text-stone-500 ring-1 ring-stone-200">
+                  STEP 02
+                </span>
+              </div>
+              <h3 className="mt-3 text-base font-extrabold text-ink">Order as a guest</h3>
+              <p className="mt-1 text-sm leading-relaxed text-stone-600">
+                No account or password needed. Every dish is checked against your Pure Veg, Vegan, or Jain guardrail before checkout.
+              </p>
+            </div>
+            <div className="mt-4 border-t border-stone-200/70 pt-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setDiet("PURE_VEG");
+                  document.getElementById("list-h")?.scrollIntoView({ behavior: "smooth" });
+                }}
+                className="inline-flex items-center gap-1.5 text-xs font-bold text-amber-900 hover:text-ink hover:underline"
+              >
+                <span>Browse Pure Veg kitchens</span>
+                <span aria-hidden="true">↑</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Step 3: Track with your number */}
+          <div className="flex flex-col justify-between rounded-2xl border border-stone-200/80 bg-cream/55 p-4 transition hover:border-green-700/40">
+            <div>
+              <div className="flex items-center justify-between gap-2">
+                <span
+                  aria-hidden="true"
+                  className="flex h-10 w-10 items-center justify-center rounded-xl bg-green-100 text-green-800 ring-1 ring-green-200"
+                >
+                  <svg
+                    viewBox="0 0 24 24"
+                    className="h-5 w-5"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <circle cx="11" cy="11" r="8" />
+                    <path d="m21 21-4.3-4.3" />
+                    <path d="M8 11h6M11 8v6" />
+                  </svg>
+                </span>
+                <span className="rounded-md bg-white px-2 py-0.5 font-mono text-[11px] font-bold tracking-wider text-stone-500 ring-1 ring-stone-200">
+                  STEP 03
+                </span>
+              </div>
+              <h3 className="mt-3 text-base font-extrabold text-ink">Track with your number</h3>
+              <p className="mt-1 text-sm leading-relaxed text-stone-600">
+                Follow live kitchen prep and delivery status any time using your Crockford order code (e.g. FA-XXXXX-XXXXX).
+              </p>
+            </div>
+            <div className="mt-4 border-t border-stone-200/70 pt-3">
+              <Link
+                href="/track"
+                className="inline-flex items-center gap-1.5 text-xs font-bold text-green-800 hover:text-green-950 hover:underline"
+              >
+                <span>Track an existing order</span>
+                <span aria-hidden="true">→</span>
+              </Link>
+            </div>
+          </div>
+        </div>
       </section>
     </div>
   );

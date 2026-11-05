@@ -6,7 +6,16 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { catalog, type MenuItem, type Restaurant } from "@/lib/api";
 import { estimatedSubtotalPaise, quantityOf, useCart } from "@/features/cart";
-import { matchesDiet, toList, usePrefs, CertBadge, DietBadges, OpenBadge, DietSwitch } from "@/features/catalog";
+import {
+  matchesDiet,
+  matchItemAllergenWatchlist,
+  toList,
+  usePrefs,
+  CertBadge,
+  DietBadges,
+  OpenBadge,
+  DietSwitch,
+} from "@/features/catalog";
 import { formatDistance, formatPaise } from "@/lib/money";
 import { ConfirmDialog, Empty, ErrorBox } from "@/components/ui";
 import { MenuSkeleton } from "@/components/Skeletons";
@@ -16,11 +25,25 @@ function Qty({ item, restaurant }: { item: MenuItem; restaurant: Restaurant }) {
   const { cart, add, decrement } = useCart();
   const router = useRouter();
   const [pending, setPending] = useState(false);
+  const [confirmNonVeg, setConfirmNonVeg] = useState(false);
   const qty = quantityOf(cart, item.id);
-  const addItem = { itemId: item.id, name: item.name, pricePaise: item.pricePaise };
+  const addItem = {
+    itemId: item.id,
+    name: item.name,
+    pricePaise: item.pricePaise,
+    isPureVeg: item.isPureVeg,
+    isVegan: item.isVegan,
+    isJain: item.isJain,
+    containsAllergens: toList(item.containsAllergens),
+  };
   const rest = { id: restaurant.id, name: restaurant.name };
   const notifyAdded = (message: string) =>
     toast.success(message, { action: { label: "View cart", onClick: () => router.push("/cart") } });
+
+  const performAdd = () => {
+    if (add(rest, addItem) === "switch-needed") setPending(true);
+    else notifyAdded(`${item.name} added to cart`);
+  };
 
   return (
     <>
@@ -29,8 +52,8 @@ function Qty({ item, restaurant }: { item: MenuItem; restaurant: Restaurant }) {
           type="button"
           disabled={!item.available}
           onClick={() => {
-            if (add(rest, addItem) === "switch-needed") setPending(true);
-            else notifyAdded(`${item.name} added to cart`);
+            if (!item.isPureVeg) setConfirmNonVeg(true);
+            else performAdd();
           }}
           aria-label={`Add ${item.name} to cart`}
           className="rounded-xl border border-green-700 bg-white px-5 py-2 text-sm font-bold text-green-800 hover:bg-green-50 disabled:cursor-not-allowed disabled:border-stone-300 disabled:text-stone-400 disabled:hover:bg-transparent"
@@ -61,6 +84,19 @@ function Qty({ item, restaurant }: { item: MenuItem; restaurant: Restaurant }) {
         </div>
       )}
       <ConfirmDialog
+        open={confirmNonVeg}
+        title="Add non-vegetarian dish?"
+        confirmLabel="Add to cart"
+        onCancel={() => setConfirmNonVeg(false)}
+        onConfirm={() => {
+          setConfirmNonVeg(false);
+          performAdd();
+        }}
+      >
+        <strong>{item.name}</strong> is a non-vegetarian dish from {restaurant.name} (Tier 2 segregated kitchen). Do you want
+        to add it to your cart?
+      </ConfirmDialog>
+      <ConfirmDialog
         open={pending}
         title="Start a new cart?"
         confirmLabel="Clear and add"
@@ -80,8 +116,10 @@ function Qty({ item, restaurant }: { item: MenuItem; restaurant: Restaurant }) {
 }
 
 function MenuRow({ item, restaurant, index }: { item: MenuItem; restaurant: Restaurant; index: number }) {
+  const { allergenWatchlist } = usePrefs();
   const allergens = toList(item.containsAllergens);
   const ingredients = toList(item.ingredients);
+  const watchlistHits = matchItemAllergenWatchlist(item, allergenWatchlist);
   return (
     <FadeInItem
       index={index}
@@ -102,6 +140,12 @@ function MenuRow({ item, restaurant, index }: { item: MenuItem; restaurant: Rest
           </h3>
           <p className="text-sm font-semibold">{formatPaise(item.pricePaise)}</p>
           {item.description && <p className="text-sm leading-snug text-stone-600">{item.description}</p>}
+          {watchlistHits.length > 0 && (
+            <p className="inline-flex flex-wrap items-center gap-1.5 rounded-lg border border-amber-300 bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-900">
+              <span>Allergen watchlist alert:</span>
+              <span>{watchlistHits.join(", ")}</span>
+            </p>
+          )}
           {allergens.length > 0 && (
             <p className="text-xs text-stone-600">
               Contains <strong className="font-semibold text-amber-800">{allergens.join(", ")}</strong>
@@ -152,6 +196,7 @@ export default function RestaurantPage() {
   }, [id, nonce]);
 
   const visible = useMemo(() => menu.filter((m) => matchesDiet(m, diet)), [menu, diet]);
+  const hasNonVegVisible = useMemo(() => visible.some((m) => !m.isPureVeg), [visible]);
   const retry = useCallback(() => setNonce((n) => n + 1), []);
 
   if (error) return <ErrorBox error={error} onRetry={retry} />;
@@ -180,6 +225,25 @@ export default function RestaurantPage() {
       </header>
 
       <DietSwitch value={diet} onChange={setDiet} />
+
+      {diet === "ALL" && hasNonVegVisible && (
+        <div
+          role="status"
+          className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-amber-300 bg-amber-50 px-4 py-2.5 text-sm text-amber-900"
+        >
+          <span>
+            <strong>Tier 2 Segregated Kitchen:</strong> Non-vegetarian items are visible because your diet filter is set to
+            &ldquo;All&rdquo;.
+          </span>
+          <button
+            type="button"
+            onClick={() => setDiet("PURE_VEG")}
+            className="shrink-0 font-semibold text-green-800 underline hover:text-green-900"
+          >
+            Show Pure Veg only
+          </button>
+        </div>
+      )}
 
       {visible.length === 0 ? (
         <Empty>No dishes here match this diet filter.</Empty>
