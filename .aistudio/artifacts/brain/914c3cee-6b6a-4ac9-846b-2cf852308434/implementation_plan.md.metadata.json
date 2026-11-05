@@ -1,6 +1,0 @@
-{
-  "summary": "Revised implementation plan: Allow users to sign up independently on Restaurant or Delivery Partner modules with complete account, session, and UI isolation per domain (never combining Customer, Restaurant Owner, and Delivery Partner experiences), plus Org-Managed Customer Groups (Loyalty Tiers & Dietary Cohorts).",
-  "updatedAt": "2026-11-05T03:40:24.044549829Z",
-  "requestFeedback": true,
-  "userFacing": true
-}

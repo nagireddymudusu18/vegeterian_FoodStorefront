@@ -1,0 +1,16 @@
+{
+  "name": "Veggo Eats — Pure Veg, Vegan & Jain Food Delivery",
+  "short_name": "Veggo Eats",
+  "description": "Veggo Eats delivers pure veg, vegan and Jain food from certified kitchens. Veg, on the go.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#1b5e3a",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+}
