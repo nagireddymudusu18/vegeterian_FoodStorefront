@@ -6,4 +6,5 @@ export * from "./locations";
 export * from "./LocationSelector";
 export * from "./profile-prefs";
 export * from "./bulk-availability";
-
+export * from "./assets";
+export * from "./CulinaryAsset";

@@ -7,7 +7,7 @@ export default function RefundsPage() {
   return (
     <article className="mx-auto max-w-3xl space-y-4 text-stone-800">
       <h1 className="page-title">Cancellation and refund policy</h1>
-      <p className="text-sm text-stone-500">Last updated: {BRAND.updated}. Draft: confirm the rules match the live flow before launch.</p>
+      <p className="text-sm text-stone-500">Last updated: {BRAND.updated}</p>
       <h2 className="text-lg font-bold">Cancelling</h2>
       <p>
         You can cancel an order from its page until a delivery partner has been assigned. After that the food is

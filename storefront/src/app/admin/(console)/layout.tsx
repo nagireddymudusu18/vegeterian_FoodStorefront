@@ -88,7 +88,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
     { href: "/admin/deliveries", label: "Deliveries" },
     { href: "/admin/restaurants", label: "Restaurants" },
     { href: "/admin/refunds", label: "Refunds" },
-    { href: "/admin/dead-letters", label: "Dead letters", badge: parkedCount },
+    { href: "/admin/dead-letters", label: "Event Queue", badge: parkedCount },
     { href: "/admin/team", label: "Users & Roles" },
   ];
 
@@ -102,11 +102,11 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
             className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-900"
           >
             <span>
-              <strong>Dead-letter alert:</strong> {parkedCount} event{parkedCount === 1 ? " is" : "s are"} parked across{" "}
+              <strong>Event queue alert:</strong> {parkedCount} failed event{parkedCount === 1 ? " is" : "s are"} queued across{" "}
               <strong>{parkedServices.join(", ")}</strong>.
             </span>
             <Link href="/admin/dead-letters" className="shrink-0 font-bold text-red-900 underline">
-              Review dead letters &rarr;
+              Review event queue &rarr;
             </Link>
           </div>
         )}

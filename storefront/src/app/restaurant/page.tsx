@@ -251,7 +251,7 @@ export default function RestaurantHome() {
               href="/restaurant/menu"
               className="rounded-lg border border-stone-300 bg-white px-3 py-1.5 text-xs font-bold text-stone-800 hover:bg-stone-100"
             >
-              Menu &amp; 86 &rarr;
+              Menu &amp; Availability &rarr;
             </Link>
           </div>
         </section>
@@ -265,7 +265,7 @@ export default function RestaurantHome() {
               {history ? "Past kitchen orders" : "Live kitchen order board"}
             </h1>
             <span className="rounded-md bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-900 ring-1 ring-emerald-200">
-              {live ? "Live stream" : "Auto-polling"}
+              {live ? "Live connected" : "Auto-updating"}
             </span>
           </div>
           <p className="text-xs text-stone-600">

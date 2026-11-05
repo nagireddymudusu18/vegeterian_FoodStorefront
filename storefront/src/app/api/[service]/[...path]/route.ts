@@ -1,18 +1,37 @@
 import { NextRequest, NextResponse } from "next/server";
-import type { DeadLetterService, Diet, MenuItemPayload } from "@/lib/api";
 import {
+  type CreatePaymentMeta,
+  type CustomerDietaryCohort,
+  type CustomerLoyaltyTier,
+  type DeadLetterService,
+  type Diet,
+  type GroupAssignmentMode,
+  type MenuItemPayload,
+  type OrgCustomerGroupRules,
+} from "@/lib/api";
+import {
+  mergeAddressSuggestions,
+  parsePhotonGeoJson,
+  reverseGeocodeCoordinates,
+  searchLocalAddressIndex,
+} from "@/features/catalog/address-autocomplete";
+import {
+  addRestaurantReview,
   cancelOrderByCustomer,
+  computeOrderTaxQuoteForUser,
   createOrderForUser,
   createPaymentForOrder,
   createRestaurant,
   getAdminTeam,
   getBackendState,
+  getOrgCustomerGroupRules,
   getPaymentById,
   getRestaurantById,
   getRestaurantMenu,
   getUserInbox,
   HttpProblem,
   listAdminUsers,
+  listRestaurantReviews,
   listStaffOrders,
   loginEmailUser,
   refundPaymentById,
@@ -20,6 +39,7 @@ import {
   registerEmailUser,
   requireUser,
   searchRestaurants,
+  setAdminUserCustomerGroup,
   setAdminUserRole,
   setBulkMenuItemAvailability,
   setBulkMenuItemPrices,
@@ -28,6 +48,7 @@ import {
   toMe,
   trackOrderByNumber,
   transitionOrderByStaff,
+  updateOrgCustomerGroupRules,
   upsertMenuItem,
   verifyOtpLogin,
 } from "@/lib/mock-backend";
@@ -106,18 +127,57 @@ async function handle(req: NextRequest, ctx: RouteContext): Promise<Response> {
         return NextResponse.json(flag);
       }
 
+      const portalHeaderDomain = req.headers.get("x-portal-domain");
+
+      if (method === "GET" && joined === "/customer-group-rules") {
+        return NextResponse.json(getOrgCustomerGroupRules());
+      }
+
+      if (method === "GET" && joined === "/admin/customer-group-rules") {
+        requireUser(authHeader);
+        return NextResponse.json(getOrgCustomerGroupRules());
+      }
+
+      if (method === "PUT" && joined === "/admin/customer-group-rules") {
+        const user = requireUser(authHeader);
+        const body = (await req.json()) as Partial<OrgCustomerGroupRules>;
+        return NextResponse.json(updateOrgCustomerGroupRules(body, user.id));
+      }
+
       if (method === "POST" && joined === "/auth/otp/request") {
         return new NextResponse(null, { status: 204 });
       }
 
       if (method === "POST" && joined === "/auth/otp/verify") {
-        const body = (await req.json()) as { phone?: string; code?: string; name?: string };
-        return NextResponse.json(verifyOtpLogin(body.phone ?? "", body.code ?? "", body.name));
+        const body = (await req.json()) as {
+          phone?: string;
+          code?: string;
+          name?: string;
+          accountDomain?: string;
+        };
+        return NextResponse.json(
+          verifyOtpLogin(
+            body.phone ?? "",
+            body.code ?? "",
+            body.name,
+            body.accountDomain ?? portalHeaderDomain,
+          ),
+        );
       }
 
       if (method === "POST" && joined === "/auth/register") {
-        const body = (await req.json()) as { name?: string; email?: string; password?: string };
-        registerEmailUser(body.name ?? "", body.email ?? "", body.password ?? "");
+        const body = (await req.json()) as {
+          name?: string;
+          email?: string;
+          password?: string;
+          accountDomain?: string;
+        };
+        registerEmailUser(
+          body.name ?? "",
+          body.email ?? "",
+          body.password ?? "",
+          body.accountDomain ?? portalHeaderDomain,
+        );
         return new NextResponse(null, { status: 202 });
       }
 
@@ -127,7 +187,13 @@ async function handle(req: NextRequest, ctx: RouteContext): Promise<Response> {
         const user = userId ? state.users.get(userId) : [...state.users.values()][0];
         if (!user) throw new HttpProblem(400, "Invalid or expired verification link");
         user.emailVerified = true;
-        return NextResponse.json(loginEmailUser(user.email ?? "user@example.com", body.password ?? ""));
+        return NextResponse.json(
+          loginEmailUser(
+            user.email ?? "user@example.com",
+            body.password ?? "",
+            user.accountDomain ?? portalHeaderDomain,
+          ),
+        );
       }
 
       if (
@@ -141,13 +207,23 @@ async function handle(req: NextRequest, ctx: RouteContext): Promise<Response> {
       }
 
       if (method === "POST" && joined === "/auth/login") {
-        const body = (await req.json()) as { email?: string; password?: string };
-        return NextResponse.json(loginEmailUser(body.email ?? "", body.password ?? ""));
+        const body = (await req.json()) as {
+          email?: string;
+          password?: string;
+          accountDomain?: string;
+        };
+        return NextResponse.json(
+          loginEmailUser(
+            body.email ?? "",
+            body.password ?? "",
+            body.accountDomain ?? portalHeaderDomain,
+          ),
+        );
       }
 
       if (method === "POST" && joined === "/auth/admin/login") {
         const body = (await req.json()) as { email?: string; password?: string };
-        const tokens = loginEmailUser(body.email ?? "", body.password ?? "");
+        const tokens = loginEmailUser(body.email ?? "", body.password ?? "", "ADMIN");
         return NextResponse.json({ tokens });
       }
 
@@ -155,7 +231,9 @@ async function handle(req: NextRequest, ctx: RouteContext): Promise<Response> {
         const user =
           [...state.users.values()].find((u) => u.roles.includes("ADMIN")) ??
           [...state.users.values()][0];
-        return NextResponse.json(loginEmailUser(user?.email ?? "nagireddy.mudusu@gmail.com", ""));
+        return NextResponse.json(
+          loginEmailUser(user?.email ?? "nagireddy.mudusu@gmail.com", "", "ADMIN"),
+        );
       }
 
       if (method === "POST" && joined === "/auth/refresh") {
@@ -178,6 +256,17 @@ async function handle(req: NextRequest, ctx: RouteContext): Promise<Response> {
         const userId = decodeURIComponent(path[2]);
         const body = (await req.json()) as { role?: string; enabled?: boolean };
         return NextResponse.json(setAdminUserRole(userId, body.role ?? "", Boolean(body.enabled)));
+      }
+
+      if (method === "PATCH" && path[0] === "admin" && path[1] === "users" && path[2] && path[3] === "customer-group") {
+        const actor = requireUser(authHeader);
+        const userId = decodeURIComponent(path[2]);
+        const body = (await req.json()) as {
+          loyaltyTier?: CustomerLoyaltyTier;
+          dietaryCohort?: CustomerDietaryCohort;
+          assignmentMode?: GroupAssignmentMode;
+        };
+        return NextResponse.json(setAdminUserCustomerGroup(userId, body, actor.id));
       }
 
       if (method === "POST" && joined === "/admin/team/invites") {
@@ -391,6 +480,74 @@ async function handle(req: NextRequest, ctx: RouteContext): Promise<Response> {
         return NextResponse.json(setBulkMenuItemPrices(body.updates ?? []));
       }
 
+      if (method === "GET" && joined === "/geocode/autocomplete") {
+        const sp = req.nextUrl.searchParams;
+        const q = (sp.get("q") ?? "").trim();
+        const lat = sp.get("lat") ? Number(sp.get("lat")) : 12.9716;
+        const lng = sp.get("lng") ? Number(sp.get("lng")) : 77.5946;
+        const localResults = searchLocalAddressIndex(q, lat, lng);
+
+        let photonResults: ReturnType<typeof parsePhotonGeoJson> = [];
+        let provider = "curated-india-index";
+        if (q.length >= 2) {
+          try {
+            const photonUrl = `https://photon.komoot.io/api/?q=${encodeURIComponent(q)}&lat=${lat}&lon=${lng}&limit=5&lang=en`;
+            const res = await fetch(photonUrl, {
+              headers: { "User-Agent": "VeggoEatsStorefront/1.0" },
+              signal: AbortSignal.timeout(2200),
+            });
+            if (res.ok) {
+              const geojson = await res.json();
+              photonResults = parsePhotonGeoJson(geojson, lat, lng);
+              if (photonResults.length > 0) provider = "photon-komoot-osm";
+            }
+          } catch {
+            // Gracefully fall back to curated India address index if offline or timed out
+          }
+        }
+        const suggestions = mergeAddressSuggestions(photonResults, localResults, 6);
+        return NextResponse.json({ suggestions, provider });
+      }
+
+      if (method === "GET" && joined === "/geocode/reverse") {
+        const sp = req.nextUrl.searchParams;
+        const lat = sp.get("lat") ? Number(sp.get("lat")) : 12.9716;
+        const lng = sp.get("lng") ? Number(sp.get("lng")) : 77.5946;
+        let nominatimPayload: unknown = undefined;
+        try {
+          const nomUrl = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}`;
+          const res = await fetch(nomUrl, {
+            headers: { "User-Agent": "VeggoEatsStorefront/1.0" },
+            signal: AbortSignal.timeout(2000),
+          });
+          if (res.ok) {
+            nominatimPayload = await res.json();
+          }
+        } catch {
+          // Fallback to local reverse geocoder
+        }
+        const suggestion = reverseGeocodeCoordinates(lat, lng, nominatimPayload);
+        return NextResponse.json({ suggestion });
+      }
+
+      if (method === "GET" && path[0] === "restaurants" && path.length === 3 && path[2] === "reviews") {
+        return NextResponse.json(listRestaurantReviews(decodeURIComponent(path[1])));
+      }
+
+      if (method === "POST" && path[0] === "restaurants" && path.length === 3 && path[2] === "reviews") {
+        const user = requireUser(authHeader);
+        const body = (await req.json()) as {
+          rating?: number;
+          comment?: string;
+          tags?: string[];
+          dishNames?: string[];
+          orderId?: string | null;
+        };
+        return NextResponse.json(addRestaurantReview(user.id, decodeURIComponent(path[1]), body), {
+          status: 201,
+        });
+      }
+
       if (method === "PATCH" && path[0] === "items" && path.length === 3 && path[2] === "availability") {
         requireUser(authHeader);
         const body = (await req.json()) as { available?: boolean };
@@ -565,15 +722,37 @@ async function handle(req: NextRequest, ctx: RouteContext): Promise<Response> {
         }
         return NextResponse.json({ id: order.id, orderNumber: order.orderNumber, status: order.status });
       }
+      if (method === "POST" && joined === "/orders/tax-quote") {
+        const user = requireUser(authHeader);
+        const body = (await req.json()) as {
+          restaurantId?: string;
+          lines?: { itemId: string; quantity: number }[];
+          customerStateCode?: string;
+        };
+        return NextResponse.json(
+          computeOrderTaxQuoteForUser(
+            user.id,
+            body.restaurantId ?? "",
+            body.lines ?? [],
+            body.customerStateCode,
+          ),
+        );
+      }
     }
 
     // ---------- PAYMENTS SERVICE ----------
     if (service === "payments") {
       if (method === "POST" && joined === "/payments") {
         const user = requireUser(authHeader);
-        const body = (await req.json()) as { orderId?: string; amountPaise?: number };
+        const body = (await req.json()) as { orderId?: string; amountPaise?: number } & CreatePaymentMeta;
         const idempotencyKey = req.headers.get("idempotency-key");
-        const payment = createPaymentForOrder(user.id, body.orderId ?? "", Number(body.amountPaise ?? 0), idempotencyKey);
+        const payment = createPaymentForOrder(
+          user.id,
+          body.orderId ?? "",
+          Number(body.amountPaise ?? 0),
+          idempotencyKey,
+          body,
+        );
         return NextResponse.json(payment, { status: 201 });
       }
 

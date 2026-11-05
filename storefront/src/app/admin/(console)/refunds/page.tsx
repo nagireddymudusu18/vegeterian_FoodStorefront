@@ -76,11 +76,11 @@ export default function AdminRefundsPage() {
 
       <form onSubmit={lookup} className="card flex flex-wrap items-end gap-3 p-5">
         <label className="min-w-64 flex-1 space-y-1 text-sm">
-          <span className="font-semibold text-stone-800">Payment ID (or Order ID / Order # in sandbox)</span>
+          <span className="font-semibold text-stone-800">Payment ID, Order ID, or Order Number</span>
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="e.g. UUID from payment-service or FA-XXXXX-XXXXX"
+            placeholder="Enter Payment ID or Order # (e.g. FA-7K2M9-P4X8Q)"
             required
             className="w-full rounded-xl border border-stone-300 bg-white px-3.5 py-2 text-sm"
           />

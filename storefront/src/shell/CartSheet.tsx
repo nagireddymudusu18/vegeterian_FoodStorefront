@@ -6,8 +6,15 @@ import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { m } from "@/components/motion";
 import { Sheet, SheetClose, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle, SheetTrigger } from "@/components/shadcn/sheet";
+import { useAuth } from "@/features/auth";
 import { cartAllergens, cartDietConflicts, estimatedSubtotalPaise, useCart } from "@/features/cart";
 import { dietLabel, usePrefs } from "@/features/catalog";
+import {
+  computeCustomerGroupOrderPricing,
+  DEFAULT_ORG_CUSTOMER_GROUP_RULES,
+  DIETARY_COHORT_META,
+  LOYALTY_TIER_META,
+} from "@/features/customer-groups";
 import { formatPaise } from "@/lib/money";
 
 const TRIGGER_CLASS =
@@ -27,6 +34,7 @@ function CartIcon() {
 export function CartSheet() {
   const { cart, count, add, decrement, remove } = useCart();
   const { diet } = usePrefs();
+  const { me } = useAuth();
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
 
@@ -59,6 +67,14 @@ export function CartSheet() {
   const restaurant = cart.restaurantId ? { id: cart.restaurantId, name: cart.restaurantName ?? "Restaurant" } : null;
   const conflicts = cartDietConflicts(cart, diet);
   const allergens = cartAllergens(cart);
+  const subtotalPaise = estimatedSubtotalPaise(cart);
+  const groupPricing = me?.customerGroup
+    ? computeCustomerGroupOrderPricing(
+        subtotalPaise,
+        me.customerGroup.loyaltyTier,
+        me.orgRules ?? DEFAULT_ORG_CUSTOMER_GROUP_RULES,
+      )
+    : null;
 
   return (
     <Sheet
@@ -154,9 +170,23 @@ export function CartSheet() {
                   Contains allergens: <strong>{allergens.join(", ")}</strong>
                 </p>
               )}
+              {me?.customerGroup && groupPricing && (
+                <div className="rounded-xl border border-emerald-200 bg-emerald-50/70 p-2.5 text-xs text-emerald-950">
+                  <div className="flex items-center justify-between font-bold">
+                    <span>{LOYALTY_TIER_META[me.customerGroup.loyaltyTier].label}</span>
+                    <span>{DIETARY_COHORT_META[me.customerGroup.dietaryCohort].label}</span>
+                  </div>
+                  <p className="mt-0.5 text-[11px] text-emerald-800">
+                    {groupPricing.discountPaise > 0
+                      ? `Saves ${formatPaise(groupPricing.discountPaise)} (${groupPricing.discountPercent}% off)`
+                      : "Standard tier pricing"}
+                    {groupPricing.deliveryFeePaise === 0 ? " + FREE delivery" : ""}
+                  </p>
+                </div>
+              )}
               <div className="flex justify-between font-semibold">
-                <span>Estimated subtotal</span>
-                <span>{formatPaise(estimatedSubtotalPaise(cart))}</span>
+                <span>Item subtotal</span>
+                <span>{formatPaise(subtotalPaise)}</span>
               </div>
               <SheetClose asChild>
                 <Link

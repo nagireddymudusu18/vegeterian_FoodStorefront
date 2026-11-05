@@ -15,11 +15,14 @@ import {
   DietBadges,
   OpenBadge,
   DietSwitch,
+  DishThumbnailAsset,
+  RestaurantCoverAsset,
 } from "@/features/catalog";
 import { formatDistance, formatPaise } from "@/lib/money";
 import { ConfirmDialog, Empty, ErrorBox } from "@/components/ui";
 import { MenuSkeleton } from "@/components/Skeletons";
 import { FadeInItem } from "@/components/motion";
+import { RestaurantReviewsSection, StarRatingDisplay } from "@/features/reviews/RestaurantReviewsSection";
 
 function Qty({ item, restaurant }: { item: MenuItem; restaurant: Restaurant }) {
   const { cart, add, decrement } = useCart();
@@ -120,6 +123,8 @@ function MenuRow({ item, restaurant, index }: { item: MenuItem; restaurant: Rest
   const allergens = toList(item.containsAllergens);
   const ingredients = toList(item.ingredients);
   const watchlistHits = matchItemAllergenWatchlist(item, allergenWatchlist);
+  const dishMentionCount = restaurant.ratingSummary?.dishMentions?.[item.name] ?? 0;
+
   return (
     <FadeInItem
       index={index}
@@ -127,18 +132,26 @@ function MenuRow({ item, restaurant, index }: { item: MenuItem; restaurant: Rest
         item.available ? "bg-white hover:shadow-md" : "bg-stone-100"
       }`}
     >
-      <div className={`flex items-start justify-between gap-3 ${item.available ? "" : "opacity-60"}`}>
-        <div className="min-w-0 space-y-1.5">
-          <DietBadges item={item} />
+      <div className={`flex items-start justify-between gap-3 sm:gap-4 ${item.available ? "" : "opacity-60"}`}>
+        <DishThumbnailAsset item={item} restaurantName={restaurant.name} />
+        <div className="min-w-0 flex-1 space-y-1.5">
+          <div className="flex flex-wrap items-center gap-2">
+            <DietBadges item={item} />
+            {dishMentionCount > 0 && (
+              <span className="text-xs font-bold text-amber-800">
+                ★ Recommended by {dishMentionCount} {dishMentionCount === 1 ? "diner" : "diners"}
+              </span>
+            )}
+          </div>
           <h3 className="font-bold leading-snug">
             {item.name}
             {!item.available && (
               <span className="ml-2 rounded bg-stone-300 px-1.5 py-0.5 align-middle text-xs font-medium text-stone-700">
-                86&apos;d: unavailable
+                Sold out
               </span>
             )}
           </h3>
-          <p className="text-sm font-semibold">{formatPaise(item.pricePaise)}</p>
+          <p className="text-sm font-semibold tabular-nums">{formatPaise(item.pricePaise)}</p>
           {item.description && <p className="text-sm leading-snug text-stone-600">{item.description}</p>}
           {watchlistHits.length > 0 && (
             <p className="inline-flex flex-wrap items-center gap-1.5 rounded-lg border border-amber-300 bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-900">
@@ -204,24 +217,44 @@ export default function RestaurantPage() {
 
   return (
     <div className="space-y-4">
-      <Link href="/" className="text-sm text-green-800 underline">
-        &larr; All restaurants
+      <Link href="/" className="inline-flex items-center gap-1.5 text-sm font-semibold text-green-800 hover:underline">
+        <span aria-hidden="true">&larr;</span>
+        <span>All restaurants</span>
       </Link>
-      <header className="relative space-y-2 overflow-hidden rounded-3xl bg-gradient-to-br from-green-700 to-green-600 p-5 text-white shadow-md sm:p-7">
-        <span aria-hidden="true" className="pointer-events-none absolute right-5 top-5 h-10 w-10 rounded-full bg-amber-500 sm:-right-6 sm:-top-8 sm:h-32 sm:w-32" />
-        <div className="relative flex flex-wrap items-center gap-2 pr-14 sm:pr-0">
-          <h1 className="text-3xl font-extrabold leading-tight sm:text-4xl">{restaurant.name}</h1>
-          <OpenBadge open={restaurant.open} />
+      <header className="overflow-hidden rounded-3xl bg-white shadow-md ring-1 ring-stone-200">
+        <div className="grid sm:grid-cols-12">
+          <div className="sm:col-span-5">
+            <RestaurantCoverAsset restaurant={restaurant} heightClass="h-44 sm:h-full min-h-[11rem]" showDistance={false} />
+          </div>
+          <div className="flex flex-col justify-center space-y-2.5 bg-gradient-to-br from-green-800 via-green-700 to-green-600 p-5 text-white sm:col-span-7 sm:p-7">
+            <div className="flex flex-wrap items-center gap-2">
+              <h1 className="text-2xl font-extrabold leading-tight sm:text-4xl">{restaurant.name}</h1>
+              <OpenBadge open={restaurant.open} />
+            </div>
+            {restaurant.cuisine && <p className="text-sm font-medium text-amber-200">{restaurant.cuisine} Cuisine</p>}
+            <div className="flex flex-wrap items-center gap-2 text-sm text-green-50">
+              {restaurant.ratingSummary && (
+                <a
+                  href="#reviews-heading"
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-white/95 px-2.5 py-0.5 text-ink shadow-2xs transition hover:bg-white"
+                >
+                  <StarRatingDisplay
+                    rating={restaurant.ratingSummary.averageRating}
+                    count={restaurant.ratingSummary.reviewCount}
+                    size="sm"
+                  />
+                </a>
+              )}
+              {restaurant.distanceMeters != null && <span>{formatDistance(restaurant.distanceMeters)} away</span>}
+              <CertBadge level={restaurant.kitchenCertificationLevel} />
+            </div>
+            {!restaurant.open && (
+              <p role="status" className="rounded bg-amber-50 p-2 text-sm text-amber-900">
+                This kitchen is currently closed and not accepting new orders right now.
+              </p>
+            )}
+          </div>
         </div>
-        <div className="relative flex flex-wrap items-center gap-2 text-sm text-green-50">
-          {restaurant.distanceMeters != null && <span>{formatDistance(restaurant.distanceMeters)} away</span>}
-          <CertBadge level={restaurant.kitchenCertificationLevel} />
-        </div>
-        {!restaurant.open && (
-          <p role="status" className="relative rounded bg-amber-50 p-2 text-sm text-amber-900">
-            This restaurant is currently closed. The server may reject new orders.
-          </p>
-        )}
       </header>
 
       <DietSwitch value={diet} onChange={setDiet} />
@@ -254,6 +287,12 @@ export default function RestaurantPage() {
           ))}
         </ul>
       )}
+
+      <RestaurantReviewsSection
+        restaurantId={restaurant.id}
+        restaurantName={restaurant.name}
+        menuDishNames={menu.map((m) => m.name)}
+      />
 
       {count > 0 && (
         <div className="sticky bottom-3 z-20">

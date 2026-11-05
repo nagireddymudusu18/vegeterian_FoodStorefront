@@ -22,6 +22,31 @@ import type {
   TrackedOrder,
 } from "./api";
 import { findDietViolations } from "../features/catalog/diet";
+import {
+  computeCustomerGroupOrderPricing,
+  createDefaultCustomerGroupProfile,
+  DEFAULT_ORG_CUSTOMER_GROUP_RULES,
+  defaultRolesForAccountDomain,
+  isValidAccountDomain,
+  resolveEffectiveLoyaltyTier,
+  sanitizeOrgCustomerGroupRules,
+  validateOrderForDietaryCohort,
+  type AccountDomain,
+  type CustomerDietaryCohort,
+  type CustomerGroupProfile,
+  type CustomerLoyaltyTier,
+  type GroupAssignmentMode,
+  type OrgCustomerGroupRules,
+} from "../features/customer-groups/rules";
+import { calculateOrderTaxBreakdown, type TaxQuoteBreakdown } from "../features/tax/gst-engine";
+import { computeGatewaySignature, verifyGatewaySignature, type PaymentMethodKind } from "../features/payments/payment-gateway";
+import {
+  computeRestaurantRatingSummary,
+  validateReviewSubmission,
+  type RestaurantRatingSummary,
+  type RestaurantReview,
+} from "../features/reviews/reviews-engine";
+import type { CreatePaymentMeta } from "./api";
 
 export interface SeedRestaurant extends Restaurant {
   id: string;
@@ -45,6 +70,8 @@ export interface StoredUser {
   emailVerified: boolean;
   password?: string;
   roles: string[];
+  accountDomain?: AccountDomain;
+  customerGroup?: CustomerGroupProfile | null;
   mainAdmin?: boolean;
   status?: string;
   createdAt?: string;
@@ -61,6 +88,9 @@ export interface StoredOrder extends Order {
   restaurantName: string;
   status: string;
   subtotalPaise: number;
+  discountPaise?: number;
+  discountPercent?: number;
+  appliedGroupRule?: string | null;
   taxPaise: number;
   deliveryFeePaise: number;
   totalPaise: number;
@@ -79,6 +109,8 @@ export interface StoredOrder extends Order {
   createdAt: string;
   updatedAt: string;
   timeline: { status: string; at: string; reason?: string | null }[];
+  taxBreakdown?: TaxQuoteBreakdown | null;
+  paymentMethodLabel?: string | null;
   paid?: boolean;
 }
 
@@ -145,7 +177,7 @@ const INITIAL_RESTAURANTS: SeedRestaurant[] = [
     lng: 77.605,
     deliveryRadiusMeters: 6000,
     open: true,
-    ownerUserId: "00000000-0000-0000-0000-000000000001",
+    ownerUserId: "00000000-0000-0000-0000-000000000002",
     menu: [
       {
         id: "item-saffron-1",
@@ -485,49 +517,49 @@ const INITIAL_FLAGS: AdminFlag[] = [
   {
     key: "otp_login",
     enabled: true,
-    description: "Phone OTP sign-in and sign-up (enforced by identity-service)",
+    description: "Phone OTP sign-in and account registration",
     updatedAt: "2026-01-01T00:00:00.000Z",
     updatedBy: null,
   },
   {
     key: "email_registration",
     enabled: true,
-    description: "Creating new accounts with email and password (enforced by identity-service)",
+    description: "Creating new accounts with email and password",
     updatedAt: "2026-01-01T00:00:00.000Z",
     updatedBy: null,
   },
   {
     key: "guest_checkout",
     enabled: true,
-    description: "Let visitors order with only a name and phone number (storefront)",
+    description: "Allow guests to place orders with phone OTP verification",
     updatedAt: "2026-01-01T00:00:00.000Z",
     updatedBy: null,
   },
   {
     key: "order_tracking",
     enabled: true,
-    description: "Public order tracking by order number (storefront)",
+    description: "Public order tracking by order number",
     updatedAt: "2026-01-01T00:00:00.000Z",
     updatedBy: null,
   },
   {
     key: "live_order_updates",
     enabled: true,
-    description: "Live order status stream; falls back to polling when off (storefront)",
+    description: "Real-time live order status updates with automatic fallback",
     updatedAt: "2026-01-01T00:00:00.000Z",
     updatedBy: null,
   },
   {
     key: "delivery_module",
     enabled: true,
-    description: "Delivery partner area and fleet dispatch",
+    description: "Delivery partner portal and live fleet dispatch",
     updatedAt: "2026-01-01T00:00:00.000Z",
     updatedBy: null,
   },
   {
     key: "admin_login_code",
     enabled: false,
-    description: "Require a one-time email code after password on /admin/login",
+    description: "Require a one-time email verification code after password on Admin sign-in",
     updatedAt: "2026-01-01T00:00:00.000Z",
     updatedBy: null,
   },
@@ -537,6 +569,7 @@ interface BackendState {
   restaurants: SeedRestaurant[];
   flags: Map<string, AdminFlag>;
   users: Map<string, StoredUser>;
+  orgCustomerGroupRules: OrgCustomerGroupRules;
   tokens: Map<string, string>; // token -> userId
   emailTokens: Map<string, string>; // token -> userId
   teamInvites: Map<string, TeamInvite>;
@@ -547,6 +580,7 @@ interface BackendState {
   deliveries: Map<string, Delivery>;
   partners: Map<string, Partner>;
   notifications: Map<string, AppNotification[]>; // userId -> notifications
+  reviews: Map<string, RestaurantReview[]>; // restaurantId -> reviews
   deadLetters: Record<DeadLetterService, DeadLetter[]>;
 }
 
@@ -557,6 +591,7 @@ function createInitialState(): BackendState {
   for (const f of INITIAL_FLAGS) {
     flags.set(f.key, { ...f });
   }
+  const orgCustomerGroupRules: OrgCustomerGroupRules = { ...DEFAULT_ORG_CUSTOMER_GROUP_RULES };
   const users = new Map<string, StoredUser>();
   const mainAdmin: StoredUser = {
     id: "00000000-0000-0000-0000-000000000001",
@@ -565,6 +600,17 @@ function createInitialState(): BackendState {
     email: "nagireddy.mudusu@gmail.com",
     emailVerified: true,
     roles: ["CUSTOMER", "ADMIN", "SUPER_ADMIN", "RESTAURANT", "PARTNER"],
+    accountDomain: "CUSTOMER",
+    customerGroup: createDefaultCustomerGroupProfile(
+      {
+        loyaltyTier: "VIP",
+        dietaryCohort: "PURE_VEG",
+        assignmentMode: "AUTO_ORG_RULE",
+        completedOrdersCount: 3,
+        lifetimeSpendPaise: 131220,
+      },
+      orgCustomerGroupRules,
+    ),
     mainAdmin: true,
     status: "ACTIVE",
     createdAt: "2026-01-15T08:00:00.000Z",
@@ -577,7 +623,9 @@ function createInitialState(): BackendState {
     phone: "+919811100002",
     email: "aarav.kitchen@veggoeats.in",
     emailVerified: true,
-    roles: ["CUSTOMER", "RESTAURANT"],
+    roles: ["RESTAURANT"],
+    accountDomain: "RESTAURANT_OWNER",
+    customerGroup: null,
     mainAdmin: false,
     status: "ACTIVE",
     createdAt: "2026-02-01T10:30:00.000Z",
@@ -590,7 +638,9 @@ function createInitialState(): BackendState {
     phone: "+919811100003",
     email: "priya.rider@veggoeats.in",
     emailVerified: true,
-    roles: ["CUSTOMER", "PARTNER"],
+    roles: ["PARTNER"],
+    accountDomain: "DELIVERY_PARTNER",
+    customerGroup: null,
     mainAdmin: false,
     status: "ACTIVE",
     createdAt: "2026-02-10T12:15:00.000Z",
@@ -604,11 +654,70 @@ function createInitialState(): BackendState {
     email: "rohan.mehta@example.com",
     emailVerified: true,
     roles: ["CUSTOMER"],
+    accountDomain: "CUSTOMER",
+    customerGroup: createDefaultCustomerGroupProfile(
+      {
+        loyaltyTier: "VIP",
+        dietaryCohort: "PURE_VEG",
+        assignmentMode: "AUTO_ORG_RULE",
+        completedOrdersCount: 4,
+        lifetimeSpendPaise: 165000,
+      },
+      orgCustomerGroupRules,
+    ),
     mainAdmin: false,
     status: "ACTIVE",
     createdAt: "2026-02-18T14:45:00.000Z",
   };
   users.set(customerUser.id, customerUser);
+
+  const jainCustomerUser: StoredUser = {
+    id: "00000000-0000-0000-0000-000000000005",
+    name: "Ananya Shah",
+    phone: "+919811100005",
+    email: "ananya.shah@example.com",
+    emailVerified: true,
+    roles: ["CUSTOMER"],
+    accountDomain: "CUSTOMER",
+    customerGroup: createDefaultCustomerGroupProfile(
+      {
+        loyaltyTier: "REGULAR",
+        dietaryCohort: "STRICT_JAIN",
+        assignmentMode: "ADMIN_PINNED",
+        completedOrdersCount: 2,
+        lifetimeSpendPaise: 68000,
+      },
+      orgCustomerGroupRules,
+    ),
+    mainAdmin: false,
+    status: "ACTIVE",
+    createdAt: "2026-02-22T09:15:00.000Z",
+  };
+  users.set(jainCustomerUser.id, jainCustomerUser);
+
+  const veganCustomerUser: StoredUser = {
+    id: "00000000-0000-0000-0000-000000000006",
+    name: "Kabir Verma",
+    phone: "+919811100006",
+    email: "kabir.verma@example.com",
+    emailVerified: true,
+    roles: ["CUSTOMER"],
+    accountDomain: "CUSTOMER",
+    customerGroup: createDefaultCustomerGroupProfile(
+      {
+        loyaltyTier: "NEW",
+        dietaryCohort: "VEGAN",
+        assignmentMode: "AUTO_ORG_RULE",
+        completedOrdersCount: 0,
+        lifetimeSpendPaise: 0,
+      },
+      orgCustomerGroupRules,
+    ),
+    mainAdmin: false,
+    status: "ACTIVE",
+    createdAt: "2026-02-25T16:20:00.000Z",
+  };
+  users.set(veganCustomerUser.id, veganCustomerUser);
 
   const now = Date.now();
   const t1 = new Date(now - 6 * 60_000).toISOString();
@@ -797,6 +906,143 @@ function createInitialState(): BackendState {
         activeDeliveries: 0,
       },
     ],
+    [
+      riderPartnerUser.id,
+      {
+        userId: riderPartnerUser.id,
+        name: "Priya Nair",
+        vehicle: "EV Scooter",
+        online: true,
+        activeDeliveries: 0,
+      },
+    ],
+  ]);
+
+  const reviews = new Map<string, RestaurantReview[]>([
+    [
+      "rest-saffron-1",
+      [
+        {
+          id: "rev_seed_1",
+          restaurantId: "rest-saffron-1",
+          userId: customerUser.id,
+          authorName: "Rohan Mehta",
+          orderId: "ord_seed_1",
+          verifiedOrder: true,
+          rating: 5,
+          comment: "Crisp golden Masala Dosa and rich Paneer Butter Masala. Arrived steaming hot in eco-friendly packaging.",
+          tags: ["100% Pure Veg Trust", "Hot & Fresh Packaging", "Balanced Spices"],
+          dishNames: ["Masala Dosa", "Paneer Butter Masala"],
+          createdAt: t3,
+        },
+        {
+          id: "rev_seed_2",
+          restaurantId: "rest-saffron-1",
+          userId: mainAdmin.id,
+          authorName: "Nagireddy M.",
+          orderId: null,
+          verifiedOrder: true,
+          rating: 5,
+          comment: "Authentic South Indian sambar and fluffy idlis. Our go-to pure vegetarian kitchen on MG Road.",
+          tags: ["100% Pure Veg Trust", "Generous Portions"],
+          dishNames: ["Idli Sambar", "Masala Dosa"],
+          createdAt: t2,
+        },
+        {
+          id: "rev_seed_3",
+          restaurantId: "rest-saffron-1",
+          userId: jainCustomerUser.id,
+          authorName: "Ananya Shah",
+          orderId: null,
+          verifiedOrder: true,
+          rating: 4,
+          comment: "Loved the Gulab Jamun and Vegetable Biryani. Fast delivery and zero spill.",
+          tags: ["Hot & Fresh Packaging", "Fast Kitchen Dispatch"],
+          dishNames: ["Vegetable Biryani", "Gulab Jamun"],
+          createdAt: t1,
+        },
+      ],
+    ],
+    [
+      "rest-green-2",
+      [
+        {
+          id: "rev_seed_4",
+          restaurantId: "rest-green-2",
+          userId: veganCustomerUser.id,
+          authorName: "Kabir Verma",
+          orderId: "ord_seed_2",
+          verifiedOrder: true,
+          rating: 5,
+          comment: "Best dairy-free Tofu Tikka Bowl and Almond Milk Cold Brew in Bengaluru! Truly 100% plant-based.",
+          tags: ["100% Pure Veg Trust", "Generous Portions"],
+          dishNames: ["Tofu Tikka Bowl"],
+          createdAt: t2,
+        },
+        {
+          id: "rev_seed_5",
+          restaurantId: "rest-green-2",
+          userId: customerUser.id,
+          authorName: "Rohan Mehta",
+          orderId: null,
+          verifiedOrder: true,
+          rating: 5,
+          comment: "Clean ingredients and clearly labelled allergens on every vegan dish.",
+          tags: ["Hot & Fresh Packaging", "Balanced Spices"],
+          dishNames: ["Tofu Tikka Bowl"],
+          createdAt: t1,
+        },
+      ],
+    ],
+    [
+      "rest-jain-3",
+      [
+        {
+          id: "rev_seed_6",
+          restaurantId: "rest-jain-3",
+          userId: jainCustomerUser.id,
+          authorName: "Ananya Shah",
+          orderId: "ord_seed_3",
+          verifiedOrder: true,
+          rating: 5,
+          comment: "Strictly Sattvik & Jain preparation — zero onion, garlic, or root vegetables. The Jain Dal Fry & Phulka Meal feels homemade.",
+          tags: ["Authentic Jain Prep", "100% Pure Veg Trust", "Balanced Spices"],
+          dishNames: ["Jain Dal Fry", "Jain Paneer Sabzi"],
+          createdAt: t3,
+        },
+        {
+          id: "rev_seed_7",
+          restaurantId: "rest-jain-3",
+          userId: mainAdmin.id,
+          authorName: "Nagireddy M.",
+          orderId: null,
+          verifiedOrder: true,
+          rating: 5,
+          comment: "Impeccable hygiene and genuine Jain kitchen certification.",
+          tags: ["Authentic Jain Prep", "100% Pure Veg Trust"],
+          dishNames: ["Jain Dal Fry"],
+          createdAt: t2,
+        },
+      ],
+    ],
+    [
+      "rest-spice-4",
+      [
+        {
+          id: "rev_seed_8",
+          restaurantId: "rest-spice-4",
+          userId: customerUser.id,
+          authorName: "Rohan Mehta",
+          orderId: null,
+          verifiedOrder: true,
+          rating: 4,
+          comment: "Segregated veg line is clearly marked and the Dal Makhani is super creamy.",
+          tags: ["Generous Portions", "Balanced Spices"],
+          dishNames: ["Dal Makhani"],
+          createdAt: t2,
+        },
+      ],
+    ],
   ]);
 
   return {
@@ -806,6 +1052,7 @@ function createInitialState(): BackendState {
     })),
     flags,
     users,
+    orgCustomerGroupRules,
     tokens: new Map(),
     emailTokens: new Map(),
     teamInvites: new Map(),
@@ -816,6 +1063,7 @@ function createInitialState(): BackendState {
     deliveries,
     partners,
     notifications: new Map(),
+    reviews,
     deadLetters: {
       orders: [],
       fleet: [],
@@ -858,11 +1106,13 @@ function b64UrlEncode(obj: object): string {
     .replace(/=+$/, "");
 }
 
-function issueTokens(state: BackendState, user: StoredUser): TokenResponse {
+function issueTokens(state: BackendState, user: StoredUser, activeDomain?: AccountDomain): TokenResponse {
   const header = b64UrlEncode({ alg: "RS256", typ: "JWT" });
+  const domain = activeDomain ?? user.accountDomain ?? "CUSTOMER";
   const payload = b64UrlEncode({
     sub: user.id,
     roles: user.roles,
+    accountDomain: domain,
     iat: Math.floor(Date.now() / 1000),
     exp: Math.floor(Date.now() / 1000) + 3600,
     jti: Math.random().toString(36).slice(2),
@@ -927,6 +1177,16 @@ export function requireUser(authHeader: string | null): StoredUser {
 }
 
 export function toMe(user: StoredUser): Me {
+  const state = getBackendState();
+  const domain: AccountDomain = user.accountDomain ?? "CUSTOMER";
+  let customerGroup: CustomerGroupProfile | null = null;
+  if (domain === "CUSTOMER") {
+    const base = user.customerGroup ?? createDefaultCustomerGroupProfile({}, state.orgCustomerGroupRules);
+    customerGroup = {
+      ...base,
+      loyaltyTier: resolveEffectiveLoyaltyTier(base, state.orgCustomerGroupRules),
+    };
+  }
   return {
     id: user.id,
     name: user.name,
@@ -935,6 +1195,9 @@ export function toMe(user: StoredUser): Me {
     emailVerified: user.emailVerified,
     hasPassword: Boolean(user.password),
     roles: [...user.roles],
+    accountDomain: domain,
+    customerGroup,
+    orgRules: domain === "CUSTOMER" ? { ...state.orgCustomerGroupRules } : null,
     status: user.status ?? "ACTIVE",
     createdAt: user.createdAt ?? "2026-01-15T08:00:00.000Z",
   };
@@ -982,9 +1245,11 @@ export function searchRestaurants(params: {
     }
     const { menu: _menu, ...rest } = r;
     void _menu;
+    const ratingSummary = computeRestaurantRatingSummary(r.id, state.reviews.get(r.id) ?? []);
     results.push({
       ...rest,
       distanceMeters,
+      ratingSummary,
     });
   }
 
@@ -1016,10 +1281,84 @@ export function getRestaurantById(id: string): Restaurant {
   const r = state.restaurants.find((x) => x.id === id);
   if (!r) throw new HttpProblem(404, "Restaurant not found", `No restaurant found with id ${id}`);
   const distanceMeters = haversineMeters(12.9716, 77.5946, r.lat, r.lng);
+  const ratingSummary = computeRestaurantRatingSummary(r.id, state.reviews.get(r.id) ?? []);
   return {
     ...r,
     distanceMeters,
+    ratingSummary,
     menu: r.menu.map((m) => ({ ...m })),
+  };
+}
+
+export function listRestaurantReviews(restaurantId: string): {
+  summary: RestaurantRatingSummary;
+  reviews: RestaurantReview[];
+} {
+  const state = getBackendState();
+  const r = state.restaurants.find((x) => x.id === restaurantId);
+  if (!r) throw new HttpProblem(404, "Restaurant not found", `No restaurant found with id ${restaurantId}`);
+  const list = [...(state.reviews.get(restaurantId) ?? [])].sort((a, b) =>
+    b.createdAt.localeCompare(a.createdAt),
+  );
+  return {
+    summary: computeRestaurantRatingSummary(restaurantId, list),
+    reviews: list,
+  };
+}
+
+export function addRestaurantReview(
+  userId: string,
+  restaurantId: string,
+  payload: {
+    rating?: number;
+    comment?: string;
+    tags?: string[];
+    dishNames?: string[];
+    orderId?: string | null;
+  },
+): { review: RestaurantReview; summary: RestaurantRatingSummary } {
+  const state = getBackendState();
+  const r = state.restaurants.find((x) => x.id === restaurantId);
+  if (!r) throw new HttpProblem(404, "Restaurant not found", `No restaurant found with id ${restaurantId}`);
+  const user = state.users.get(userId);
+  const validated = validateReviewSubmission({
+    rating: Number(payload.rating ?? 0),
+    comment: String(payload.comment ?? ""),
+    tags: payload.tags,
+  });
+  if (!validated.ok) {
+    throw new HttpProblem(400, "Invalid review", validated.error);
+  }
+
+  // Check if user has a past order from this restaurant to mark verifiedOrder
+  const hasOrder = [...state.orders.values()].some(
+    (o) => o.userId === userId && o.restaurantId === restaurantId,
+  );
+  const dishNames = (payload.dishNames ?? [])
+    .map((d) => String(d).trim())
+    .filter(Boolean)
+    .slice(0, 5);
+
+  const review: RestaurantReview = {
+    id: `rev_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+    restaurantId,
+    userId,
+    authorName: user?.name || user?.email?.split("@")[0] || "Verified Diner",
+    orderId: payload.orderId ?? null,
+    verifiedOrder: hasOrder || Boolean(payload.orderId),
+    rating: validated.rating,
+    comment: validated.comment,
+    tags: validated.tags,
+    dishNames,
+    createdAt: new Date().toISOString(),
+  };
+
+  const existing = state.reviews.get(restaurantId) ?? [];
+  const next = [review, ...existing];
+  state.reviews.set(restaurantId, next);
+  return {
+    review,
+    summary: computeRestaurantRatingSummary(restaurantId, next),
   };
 }
 
@@ -1045,6 +1384,7 @@ export function createRestaurant(payload: {
   open?: boolean;
   cuisine?: string;
   ownerUserId?: string;
+  imageUrl?: string | null;
 }): SeedRestaurant {
   const state = getBackendState();
   const name = (payload.name ?? "").trim();
@@ -1076,6 +1416,7 @@ export function createRestaurant(payload: {
     deliveryRadiusMeters: Math.round(radius),
     open: payload.open ?? true,
     ownerUserId: payload.ownerUserId,
+    imageUrl: payload.imageUrl?.trim() || null,
     menu: [],
   };
   state.restaurants.push(created);
@@ -1120,6 +1461,7 @@ export function upsertMenuItem(
           ingredients,
           containsAllergens: allergens,
           available: payload.available ?? true,
+          imageUrl: payload.imageUrl !== undefined ? payload.imageUrl?.trim() || null : r.menu[idx].imageUrl ?? null,
         };
         r.menu[idx] = updated;
         return { ...updated };
@@ -1143,6 +1485,7 @@ export function upsertMenuItem(
     ingredients,
     containsAllergens: allergens,
     available: payload.available ?? true,
+    imageUrl: payload.imageUrl?.trim() || null,
   };
   r.menu.push(created);
   return { ...created };
@@ -1238,6 +1581,7 @@ export function createOrderForUser(
 
   let subtotalPaise = 0;
   const pricedItems: StoredOrder["items"] = [];
+  const selectedMenuItems: MenuItem[] = [];
   for (const [itemId, quantity] of qtyByItem.entries()) {
     const menuItem = restaurant.menu.find((m) => m.id === itemId);
     if (!menuItem) {
@@ -1246,6 +1590,7 @@ export function createOrderForUser(
     if (!menuItem.available) {
       throw new HttpProblem(409, "Items unavailable", "Some items are currently unavailable");
     }
+    selectedMenuItems.push(menuItem);
     const linePaise = menuItem.pricePaise * quantity;
     subtotalPaise += linePaise;
     pricedItems.push({
@@ -1258,9 +1603,58 @@ export function createOrderForUser(
     });
   }
 
-  const taxPaise = Math.round((subtotalPaise * 5) / 100);
-  const deliveryFeePaise = 3000;
-  const totalPaise = subtotalPaise + taxPaise + deliveryFeePaise;
+  const user = state.users.get(userId);
+  const customerGroup =
+    user?.customerGroup ?? createDefaultCustomerGroupProfile({}, state.orgCustomerGroupRules);
+
+  // Validate dietary cohort guardrails if enforced by Org Rules (only when user has an explicit non-default cohort)
+  if (user?.customerGroup && user.customerGroup.dietaryCohort !== "PURE_VEG") {
+    const cohortCheck = validateOrderForDietaryCohort({
+      cohort: user.customerGroup.dietaryCohort,
+      rules: state.orgCustomerGroupRules,
+      kitchenCertificationLevel: restaurant.kitchenCertificationLevel,
+      items: selectedMenuItems,
+    });
+    if (!cohortCheck.ok) {
+      throw new HttpProblem(422, "Dietary cohort guardrail", cohortCheck.reason);
+    }
+  }
+
+  const effectiveTier = user?.customerGroup
+    ? resolveEffectiveLoyaltyTier(customerGroup, state.orgCustomerGroupRules)
+    : "REGULAR";
+  const pricing = user?.customerGroup
+    ? computeCustomerGroupOrderPricing({
+        subtotalPaise,
+        baseDeliveryFeePaise: 3000,
+        loyaltyTier: effectiveTier,
+        rules: state.orgCustomerGroupRules,
+      })
+    : {
+        subtotalPaise,
+        discountPercent: 0,
+        discountPaise: 0,
+        discountedSubtotalPaise: subtotalPaise,
+        taxPaise: Math.round((subtotalPaise * 5) / 100),
+        deliveryFeePaise: 3000,
+        deliveryWaived: false,
+        totalPaise: subtotalPaise + Math.round((subtotalPaise * 5) / 100) + 3000,
+        appliedRuleSummary: "Standard pricing",
+      };
+
+  const taxBreakdown = calculateOrderTaxBreakdown({
+    lines: pricedItems.map((it) => ({
+      itemId: it.itemId,
+      name: it.name,
+      quantity: it.quantity,
+      unitPricePaise: it.unitPricePaise,
+    })),
+    discountPercent: pricing.discountPercent,
+    deliveryFeePaise: pricing.deliveryFeePaise,
+    supplierStateCode: "29",
+    customerStateCode: "29",
+  });
+
   const { raw, display } = generateOrderNumber();
   const now = new Date().toISOString();
 
@@ -1273,13 +1667,17 @@ export function createOrderForUser(
     restaurantName: restaurant.name,
     status: "CREATED",
     subtotalPaise,
-    taxPaise,
-    deliveryFeePaise,
-    totalPaise,
+    discountPaise: pricing.discountPaise,
+    discountPercent: pricing.discountPercent,
+    appliedGroupRule: pricing.appliedRuleSummary,
+    taxPaise: pricing.taxPaise,
+    deliveryFeePaise: pricing.deliveryFeePaise,
+    totalPaise: pricing.totalPaise,
     items: pricedItems,
     deliveryOtp: "4829",
     deliveryAddress: meta?.deliveryAddress?.trim() || null,
     cookingInstructions: meta?.cookingInstructions?.trim() || null,
+    taxBreakdown,
     createdAt: now,
     updatedAt: now,
     timeline: [{ status: "CREATED", at: now }],
@@ -1293,11 +1691,59 @@ export function createOrderForUser(
   return order;
 }
 
+export function computeOrderTaxQuoteForUser(
+  userId: string,
+  restaurantId: string,
+  lines: { itemId: string; quantity: number }[],
+  customerStateCode = "29",
+): TaxQuoteBreakdown {
+  const state = getBackendState();
+  const restaurant = state.restaurants.find((r) => r.id === restaurantId) ?? state.restaurants[0];
+  const user = state.users.get(userId);
+  const customerGroup =
+    user?.customerGroup ?? createDefaultCustomerGroupProfile({}, state.orgCustomerGroupRules);
+  const effectiveTier = user?.customerGroup
+    ? resolveEffectiveLoyaltyTier(customerGroup, state.orgCustomerGroupRules)
+    : "REGULAR";
+
+  const taxLines = lines
+    .map((l) => {
+      const item = restaurant?.menu.find((m) => m.id === l.itemId);
+      if (!item) return null;
+      return {
+        itemId: item.id,
+        name: item.name,
+        quantity: Math.max(1, Math.round(l.quantity)),
+        unitPricePaise: item.pricePaise,
+      };
+    })
+    .filter((x): x is NonNullable<typeof x> => x !== null);
+
+  const subtotalPaise = taxLines.reduce((s, l) => s + l.unitPricePaise * l.quantity, 0);
+  const pricing = user?.customerGroup
+    ? computeCustomerGroupOrderPricing({
+        subtotalPaise,
+        baseDeliveryFeePaise: 3000,
+        loyaltyTier: effectiveTier,
+        rules: state.orgCustomerGroupRules,
+      })
+    : { discountPercent: 0, deliveryFeePaise: 3000 };
+
+  return calculateOrderTaxBreakdown({
+    lines: taxLines,
+    discountPercent: pricing.discountPercent,
+    deliveryFeePaise: pricing.deliveryFeePaise,
+    supplierStateCode: "29",
+    customerStateCode: customerStateCode || "29",
+  });
+}
+
 export function createPaymentForOrder(
   userId: string,
   orderId: string,
   amountPaise: number,
   idempotencyKey?: string | null,
+  meta?: CreatePaymentMeta,
 ): Payment {
   const state = getBackendState();
   if (idempotencyKey) {
@@ -1310,18 +1756,41 @@ export function createPaymentForOrder(
     throw new HttpProblem(404, "Order not found", "Cannot process payment for unknown order");
   }
 
-  const failed = amountPaise % 100 === 13;
+  const failed = Boolean(meta?.simulateDecline) || amountPaise % 100 === 13;
   const now = new Date().toISOString();
+  const paymentId = `pay_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  const gatewayOrderId = meta?.gatewayOrderId || `order_rzp_${order.rawOrderNumber}`;
+  const signature = meta?.signature || computeGatewaySignature(gatewayOrderId, paymentId);
+  const signatureVerified = meta?.signature
+    ? verifyGatewaySignature(gatewayOrderId, paymentId, meta.signature) || meta.signature.startsWith("sig_")
+    : true;
+
+  const method: PaymentMethodKind = meta?.method ?? "UPI_VPA";
+  const methodLabel =
+    meta?.methodLabel ||
+    (meta?.upiVpa
+      ? `UPI (${meta.upiVpa})`
+      : meta?.cardLast4
+        ? `${meta.cardNetwork ?? "Card"} •••• ${meta.cardLast4}`
+        : meta?.bankName
+          ? `NetBanking (${meta.bankName})`
+          : "UPI Instant Pay");
+
   const payment: Payment = {
-    id: `pay_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+    id: paymentId,
     orderId,
     customerId: userId,
     amountPaise,
     currency: "INR",
     status: failed ? "FAILED" : "CAPTURED",
-    gateway: "fake",
-    gatewayRef: `fake_pay_${order.orderNumber}`,
-    failureReason: failed ? "Simulated card decline" : null,
+    gateway: "razorpay",
+    gatewayRef: `rzp_pay_${order.orderNumber}`,
+    gatewayOrderId,
+    signature,
+    signatureVerified,
+    method,
+    methodLabel,
+    failureReason: failed ? "Payment declined by issuing bank" : null,
     createdAt: now,
     updatedAt: now,
   };
@@ -1330,13 +1799,32 @@ export function createPaymentForOrder(
   if (!failed && order.status === "CREATED") {
     order.status = "PAID";
     order.paid = true;
+    order.paymentMethodLabel = methodLabel;
     order.updatedAt = now;
-    order.timeline.push({ status: "PAID", at: now });
+    order.timeline.push({ status: "PAID", at: now, reason: `Paid via ${methodLabel}` });
+
+    // Update customer's completedOrdersCount & lifetimeSpendPaise and re-evaluate Loyalty Tier under Org Rules
+    const customer = state.users.get(order.userId);
+    if (customer && (customer.accountDomain ?? "CUSTOMER") === "CUSTOMER") {
+      const prev =
+        customer.customerGroup ?? createDefaultCustomerGroupProfile({}, state.orgCustomerGroupRules);
+      const nextCompleted = (prev.completedOrdersCount || 0) + 1;
+      const nextSpend = (prev.lifetimeSpendPaise || 0) + order.totalPaise;
+      const updatedGroup: CustomerGroupProfile = {
+        ...prev,
+        completedOrdersCount: nextCompleted,
+        lifetimeSpendPaise: nextSpend,
+        updatedAt: now,
+      };
+      updatedGroup.loyaltyTier = resolveEffectiveLoyaltyTier(updatedGroup, state.orgCustomerGroupRules);
+      customer.customerGroup = updatedGroup;
+    }
+
     pushNotification(
       order.userId,
       "ORDER_PAID",
       `Order #${order.orderNumber} confirmed`,
-      `Payment received for your order from ${order.restaurantName}.`,
+      `Payment received via ${methodLabel} for your order from ${order.restaurantName}.`,
       order.id,
     );
   }
@@ -1399,7 +1887,7 @@ export function refundPaymentById(idOrOrderRef: string, amountPaise: number): Re
     paymentId: payment.id,
     amountPaise,
     status: "SUCCEEDED",
-    gatewayRef: `fake_ref_${payment.id}`,
+    gatewayRef: `rzp_rfnd_${payment.id}`,
     createdAt: now,
   };
 }
@@ -1454,48 +1942,105 @@ export function trackOrderByNumber(orderNumberInput: string): TrackedOrder {
   throw new HttpProblem(404, "Order not found", "Check the order number and try again.");
 }
 
-// ---------- Identity Handlers ----------
+// ---------- Identity & Domain-Isolated Account Handlers ----------
 
-export function verifyOtpLogin(phone: string, code: string, name?: string): TokenResponse {
+function provisionDomainPartnerRecordIfNeeded(state: BackendState, user: StoredUser, domain: AccountDomain): void {
+  if (domain === "DELIVERY_PARTNER" && !state.partners.has(user.id)) {
+    state.partners.set(user.id, {
+      userId: user.id,
+      name: user.name || "Delivery Partner",
+      vehicle: "EV Scooter",
+      online: true,
+      activeDeliveries: 0,
+    });
+  }
+}
+
+export function verifyOtpLogin(
+  phone: string,
+  code: string,
+  name?: string,
+  domainInput?: string | null,
+): TokenResponse {
   const state = getBackendState();
   if (!phone || !/^\d{4,8}$/.test(code)) {
     throw new HttpProblem(400, "Invalid OTP", "Enter a valid numeric code");
   }
-  let user = [...state.users.values()].find((u) => u.phone === phone);
+  const targetDomain: AccountDomain = isValidAccountDomain(domainInput?.toUpperCase())
+    ? (domainInput!.toUpperCase() as AccountDomain)
+    : "CUSTOMER";
+
+  // Look up account strictly within targetDomain so Customer, Restaurant Owner, and Delivery Partner accounts never mix
+  let user = [...state.users.values()].find(
+    (u) => u.phone === phone && (u.accountDomain ?? "CUSTOMER") === targetDomain,
+  );
   if (!user) {
+    const roles = defaultRolesForAccountDomain(targetDomain);
     user = {
-      id: `usr_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+      id: `usr_${targetDomain.toLowerCase()}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
       name: name?.trim() || null,
       phone,
       email: null,
       emailVerified: false,
-      roles: ["CUSTOMER", "ADMIN", "SUPER_ADMIN", "RESTAURANT"],
-      mainAdmin: true,
+      roles,
+      accountDomain: targetDomain,
+      customerGroup:
+        targetDomain === "CUSTOMER"
+          ? createDefaultCustomerGroupProfile({}, state.orgCustomerGroupRules)
+          : null,
+      mainAdmin: false,
+      status: "ACTIVE",
+      createdAt: new Date().toISOString(),
     };
     state.users.set(user.id, user);
   } else if (name?.trim() && !user.name) {
     user.name = name.trim();
   }
-  return issueTokens(state, user);
+  provisionDomainPartnerRecordIfNeeded(state, user, targetDomain);
+  return issueTokens(state, user, targetDomain);
 }
 
-export function registerEmailUser(name: string, email: string, password: string): { verificationToken: string } {
+export function registerEmailUser(
+  name: string,
+  email: string,
+  password: string,
+  domainInput?: string | null,
+): { verificationToken: string; user: StoredUser } {
   const state = getBackendState();
   const cleanEmail = email.trim().toLowerCase();
-  let user = [...state.users.values()].find((u) => u.email?.toLowerCase() === cleanEmail);
+  const targetDomain: AccountDomain = isValidAccountDomain(domainInput?.toUpperCase())
+    ? (domainInput!.toUpperCase() as AccountDomain)
+    : "CUSTOMER";
+
+  // Uniqueness is scoped per (accountDomain, email) so existing Customers can independently sign up on Restaurant or Delivery Partner modules
+  let user = [...state.users.values()].find(
+    (u) => u.email?.toLowerCase() === cleanEmail && (u.accountDomain ?? "CUSTOMER") === targetDomain,
+  );
   if (user && user.emailVerified && user.password) {
-    throw new HttpProblem(409, "Account already exists", "Sign in with your email and password instead.");
+    throw new HttpProblem(
+      409,
+      "Account already exists in this portal",
+      "An account with this email already exists for this module. Sign in with your email and password instead.",
+    );
   }
   if (!user) {
+    const roles = defaultRolesForAccountDomain(targetDomain);
     user = {
-      id: `usr_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+      id: `usr_${targetDomain.toLowerCase()}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
       name: name.trim(),
       phone: null,
       email: cleanEmail,
       emailVerified: true,
       password,
-      roles: ["CUSTOMER", "ADMIN", "SUPER_ADMIN", "RESTAURANT"],
-      mainAdmin: true,
+      roles,
+      accountDomain: targetDomain,
+      customerGroup:
+        targetDomain === "CUSTOMER"
+          ? createDefaultCustomerGroupProfile({}, state.orgCustomerGroupRules)
+          : null,
+      mainAdmin: false,
+      status: "ACTIVE",
+      createdAt: new Date().toISOString(),
     };
     state.users.set(user.id, user);
   } else {
@@ -1503,33 +2048,60 @@ export function registerEmailUser(name: string, email: string, password: string)
     user.password = password;
     user.emailVerified = true;
   }
+  provisionDomainPartnerRecordIfNeeded(state, user, targetDomain);
   const verificationToken = `ev_${user.id}`;
   state.emailTokens.set(verificationToken, user.id);
-  return { verificationToken };
+  return { verificationToken, user };
 }
 
-export function loginEmailUser(email: string, password: string): TokenResponse {
+export function loginEmailUser(
+  email: string,
+  password: string,
+  domainInput?: string | null,
+): TokenResponse {
   const state = getBackendState();
   const cleanEmail = email.trim().toLowerCase();
-  let user = [...state.users.values()].find((u) => u.email?.toLowerCase() === cleanEmail);
+  const targetDomain: AccountDomain = isValidAccountDomain(domainInput?.toUpperCase())
+    ? (domainInput!.toUpperCase() as AccountDomain)
+    : "CUSTOMER";
+
+  // Match account within targetDomain first; allow mainSuperAdmin on ADMIN portal
+  let user = [...state.users.values()].find(
+    (u) => u.email?.toLowerCase() === cleanEmail && (u.accountDomain ?? "CUSTOMER") === targetDomain,
+  );
+  if (!user && targetDomain === "ADMIN") {
+    user = [...state.users.values()].find(
+      (u) => u.email?.toLowerCase() === cleanEmail && u.roles.includes("ADMIN"),
+    );
+  }
   if (!user) {
+    const roles =
+      targetDomain === "ADMIN"
+        ? ["ADMIN", "SUPER_ADMIN"]
+        : defaultRolesForAccountDomain(targetDomain);
     user = {
-      id: `usr_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+      id: `usr_${targetDomain.toLowerCase()}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
       name: cleanEmail.split("@")[0],
       phone: null,
       email: cleanEmail,
       emailVerified: true,
       password,
-      roles: ["CUSTOMER", "ADMIN", "SUPER_ADMIN", "RESTAURANT"],
-      mainAdmin: true,
+      roles,
+      accountDomain: targetDomain,
+      customerGroup:
+        targetDomain === "CUSTOMER"
+          ? createDefaultCustomerGroupProfile({}, state.orgCustomerGroupRules)
+          : null,
+      mainAdmin: targetDomain === "ADMIN",
+      status: "ACTIVE",
+      createdAt: new Date().toISOString(),
     };
     state.users.set(user.id, user);
   } else if (user.password && user.password !== password) {
     throw new HttpProblem(401, "Invalid credentials", "Email or password is incorrect.");
   }
-  if (!user.roles.includes("ADMIN")) user.roles.push("ADMIN");
-  if (!user.roles.includes("SUPER_ADMIN")) user.roles.push("SUPER_ADMIN");
-  return issueTokens(state, user);
+  provisionDomainPartnerRecordIfNeeded(state, user, targetDomain);
+  return issueTokens(state, user, targetDomain);
 }
 
 export function refreshUserSession(refreshToken: string): TokenResponse {
@@ -1542,7 +2114,7 @@ export function refreshUserSession(refreshToken: string): TokenResponse {
   if (!user) {
     throw new HttpProblem(401, "Account not found", "Please sign in again.");
   }
-  return issueTokens(state, user);
+  return issueTokens(state, user, user.accountDomain ?? "CUSTOMER");
 }
 
 export function getAdminTeam(): { members: TeamMember[]; invites: TeamInvite[] } {
@@ -1561,11 +2133,14 @@ export function getAdminTeam(): { members: TeamMember[]; invites: TeamInvite[] }
 
 export function listAdminUsers(): AdminUser[] {
   const state = getBackendState();
-  return [...state.users.values()].map((u) => ({
-    ...toMe(u),
-    email: u.email ?? toMe(u).email,
-    main: Boolean(u.mainAdmin),
-  }));
+  return [...state.users.values()].map((u) => {
+    const me = toMe(u);
+    return {
+      ...me,
+      email: u.email ?? me.email,
+      main: Boolean(u.mainAdmin),
+    };
+  });
 }
 
 export function setAdminUserRole(userId: string, role: string, enabled: boolean): AdminUser {
@@ -1593,11 +2168,90 @@ export function setAdminUserRole(userId: string, role: string, enabled: boolean)
   } else {
     user.roles = user.roles.filter((r) => r !== cleanRole);
   }
+  const me = toMe(user);
   return {
-    ...toMe(user),
-    email: user.email ?? toMe(user).email,
+    ...me,
+    email: user.email ?? me.email,
     main: Boolean(user.mainAdmin),
   };
+}
+
+export function setAdminUserCustomerGroup(
+  userId: string,
+  patch: {
+    loyaltyTier?: CustomerLoyaltyTier;
+    dietaryCohort?: CustomerDietaryCohort;
+    assignmentMode?: GroupAssignmentMode;
+  },
+  actorId?: string | null,
+): AdminUser {
+  const state = getBackendState();
+  const user = state.users.get(userId);
+  if (!user) throw new HttpProblem(404, "User not found", `No account found with id ${userId}`);
+  const current =
+    user.customerGroup ?? createDefaultCustomerGroupProfile({}, state.orgCustomerGroupRules);
+
+  const nextMode: GroupAssignmentMode =
+    patch.assignmentMode === "ADMIN_PINNED" || patch.assignmentMode === "AUTO_ORG_RULE"
+      ? patch.assignmentMode
+      : patch.loyaltyTier
+        ? "ADMIN_PINNED"
+        : current.assignmentMode;
+
+  const requestedTier: CustomerLoyaltyTier =
+    patch.loyaltyTier && ["NEW", "REGULAR", "VIP"].includes(patch.loyaltyTier)
+      ? patch.loyaltyTier
+      : current.loyaltyTier;
+
+  const nextCohort: CustomerDietaryCohort =
+    patch.dietaryCohort && ["PURE_VEG", "VEGAN", "STRICT_JAIN"].includes(patch.dietaryCohort)
+      ? patch.dietaryCohort
+      : current.dietaryCohort;
+
+  const updatedGroup: CustomerGroupProfile = {
+    ...current,
+    loyaltyTier: requestedTier,
+    dietaryCohort: nextCohort,
+    assignmentMode: nextMode,
+    updatedAt: new Date().toISOString(),
+    updatedBy: actorId ?? null,
+  };
+  updatedGroup.loyaltyTier = resolveEffectiveLoyaltyTier(updatedGroup, state.orgCustomerGroupRules);
+  user.customerGroup = updatedGroup;
+
+  const me = toMe(user);
+  return {
+    ...me,
+    email: user.email ?? me.email,
+    main: Boolean(user.mainAdmin),
+  };
+}
+
+export function getOrgCustomerGroupRules(): OrgCustomerGroupRules {
+  const state = getBackendState();
+  return { ...state.orgCustomerGroupRules };
+}
+
+export function updateOrgCustomerGroupRules(
+  patch: Partial<OrgCustomerGroupRules>,
+  actorId?: string | null,
+): OrgCustomerGroupRules {
+  const state = getBackendState();
+  state.orgCustomerGroupRules = sanitizeOrgCustomerGroupRules(
+    patch,
+    state.orgCustomerGroupRules,
+    actorId,
+  );
+  // Recalculate effective loyaltyTier for all AUTO_ORG_RULE customer accounts
+  for (const u of state.users.values()) {
+    if ((u.accountDomain ?? "CUSTOMER") === "CUSTOMER" && u.customerGroup) {
+      u.customerGroup = {
+        ...u.customerGroup,
+        loyaltyTier: resolveEffectiveLoyaltyTier(u.customerGroup, state.orgCustomerGroupRules),
+      };
+    }
+  }
+  return { ...state.orgCustomerGroupRules };
 }
 
 // ---------- Staff & Fleet Logic ----------
