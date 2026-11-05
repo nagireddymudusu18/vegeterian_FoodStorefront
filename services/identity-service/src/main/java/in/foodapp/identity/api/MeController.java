@@ -12,9 +12,12 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -41,6 +44,12 @@ public class MeController {
     @GetMapping
     public Dtos.MeResponse me(@AuthenticationPrincipal Jwt jwt) {
         return users.me(UUID.fromString(jwt.getSubject()));
+    }
+
+    @PatchMapping
+    public Dtos.MeResponse updateProfile(@AuthenticationPrincipal Jwt jwt,
+                                         @Valid @RequestBody Dtos.UpdateProfileRequest body) {
+        return users.updateName(UUID.fromString(jwt.getSubject()), body.name());
     }
 
     @PostMapping("/credentials")
@@ -81,6 +90,18 @@ public class MeController {
                                         @Valid @RequestBody Dtos.ConsentInput body,
                                         HttpServletRequest request) {
         users.recordConsent(UUID.fromString(jwt.getSubject()), body, request.getRemoteAddr());
+        return ResponseEntity.noContent().build();
+    }
+
+    @GetMapping(value = "/preferences", produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<String> getPreferences(@AuthenticationPrincipal Jwt jwt) {
+        return ResponseEntity.ok(users.getPreferences(UUID.fromString(jwt.getSubject())));
+    }
+
+    @PutMapping(value = "/preferences", consumes = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<Void> savePreferences(@AuthenticationPrincipal Jwt jwt,
+                                                @RequestBody String body) {
+        users.savePreferences(UUID.fromString(jwt.getSubject()), body);
         return ResponseEntity.noContent().build();
     }
 

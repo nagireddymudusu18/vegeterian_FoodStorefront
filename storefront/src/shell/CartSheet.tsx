@@ -6,7 +6,8 @@ import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { m } from "@/components/motion";
 import { Sheet, SheetClose, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle, SheetTrigger } from "@/components/shadcn/sheet";
-import { estimatedSubtotalPaise, useCart } from "@/features/cart";
+import { cartAllergens, cartDietConflicts, estimatedSubtotalPaise, useCart } from "@/features/cart";
+import { dietLabel, usePrefs } from "@/features/catalog";
 import { formatPaise } from "@/lib/money";
 
 const TRIGGER_CLASS =
@@ -25,6 +26,7 @@ function CartIcon() {
 /** Header cart: opens a slide-over mini cart. On the cart and checkout pages it is a plain link. */
 export function CartSheet() {
   const { cart, count, add, decrement, remove } = useCart();
+  const { diet } = usePrefs();
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
 
@@ -55,6 +57,8 @@ export function CartSheet() {
   }
 
   const restaurant = cart.restaurantId ? { id: cart.restaurantId, name: cart.restaurantName ?? "Restaurant" } : null;
+  const conflicts = cartDietConflicts(cart, diet);
+  const allergens = cartAllergens(cart);
 
   return (
     <Sheet
@@ -88,11 +92,26 @@ export function CartSheet() {
           </div>
         ) : (
           <>
+            {conflicts.length > 0 && (
+              <div role="status" className="mx-4 rounded-xl border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900">
+                <strong>Dietary check:</strong> {conflicts.map((c) => c.name).join(", ")}{" "}
+                {conflicts.some((c) => c.isPureVeg === false)
+                  ? "is non-veg."
+                  : `does not match your ${dietLabel(diet)} filter.`}
+              </div>
+            )}
             <ul className="flex-1 space-y-3 overflow-y-auto px-4">
               {cart.lines.map((l) => (
                 <li key={l.itemId} className="flex items-center justify-between gap-3 text-sm">
                   <div className="min-w-0">
-                    <p className="truncate font-medium">{l.name}</p>
+                    <p className="truncate font-medium">
+                      {l.name}
+                      {l.isPureVeg === false && (
+                        <span className="ml-1.5 rounded bg-red-100 px-1 py-0.5 text-[10px] font-semibold text-red-800">
+                          Non-veg
+                        </span>
+                      )}
+                    </p>
                     <p className="text-stone-600">{formatPaise(l.pricePaise * l.quantity)}</p>
                   </div>
                   <div className="flex shrink-0 items-center gap-2">
@@ -110,7 +129,7 @@ export function CartSheet() {
                       </span>
                       <button
                         type="button"
-                        onClick={() => add(restaurant, { itemId: l.itemId, name: l.name, pricePaise: l.pricePaise })}
+                        onClick={() => add(restaurant, l)}
                         aria-label={`Add one more ${l.name}`}
                         className="h-8 w-8 font-bold hover:bg-stone-100"
                       >
@@ -130,6 +149,11 @@ export function CartSheet() {
               ))}
             </ul>
             <SheetFooter className="border-t border-stone-200">
+              {allergens.length > 0 && (
+                <p className="text-xs text-amber-900">
+                  Contains allergens: <strong>{allergens.join(", ")}</strong>
+                </p>
+              )}
               <div className="flex justify-between font-semibold">
                 <span>Estimated subtotal</span>
                 <span>{formatPaise(estimatedSubtotalPaise(cart))}</span>

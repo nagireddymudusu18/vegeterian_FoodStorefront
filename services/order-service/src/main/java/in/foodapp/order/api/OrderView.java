@@ -19,6 +19,8 @@ public record OrderView(
         long deliveryFeePaise,
         long totalPaise,
         String deliveryOtp,
+        String deliveryAddress,
+        String cookingInstructions,
         List<ItemView> items,
         Instant createdAt,
         Instant updatedAt) {
@@ -34,7 +36,8 @@ public record OrderView(
                         i.getLineTotalPaise()))
                 .toList();
         return new OrderView(o.getId(), OrderNumbers.display(o.getOrderNumber()), o.getCustomerId(), o.getRestaurantId(), o.getStatus(),
-                o.getSubtotalPaise(), o.getTaxPaise(), o.getDeliveryFeePaise(), o.getTotalPaise(), otp, items,
+                o.getSubtotalPaise(), o.getTaxPaise(), o.getDeliveryFeePaise(), o.getTotalPaise(), otp,
+                o.getDeliveryAddress(), o.getCookingInstructions(), items,
                 o.getCreatedAt(), o.getUpdatedAt());
     }
 }

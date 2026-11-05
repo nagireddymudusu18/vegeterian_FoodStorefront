@@ -1,5 +1,34 @@
 import { safeInternalPath } from "./redirect";
 
+export type PortalScope = "customer" | "admin" | "restaurant" | "partner";
+
+const ADMIN_PATH_RE = /^\/admin(?:$|[/?#])/;
+const RESTAURANT_PATH_RE = /^\/restaurant(?:$|[/?#])/;
+const PARTNER_PATH_RE = /^\/partner(?:$|[/?#])/;
+
+/** Resolves which of the four decoupled portals owns a given URL pathname. */
+export function resolvePortalScope(pathname: string | null | undefined): PortalScope {
+  if (!pathname) return "customer";
+  if (ADMIN_PATH_RE.test(pathname)) return "admin";
+  if (RESTAURANT_PATH_RE.test(pathname)) return "restaurant";
+  if (PARTNER_PATH_RE.test(pathname)) return "partner";
+  return "customer";
+}
+
+/** Returns the dedicated sign-in route for a portal scope. */
+export function portalLoginPath(scope: PortalScope): string {
+  switch (scope) {
+    case "admin":
+      return "/admin/login";
+    case "restaurant":
+      return "/restaurant/login";
+    case "partner":
+      return "/partner/login";
+    default:
+      return "/login";
+  }
+}
+
 /**
  * Roles carried by an access token. The server trusts this claim (not /me), so the admin screens use it
  * to tell an admin sign-in apart from an ordinary session of an account that happens to be an admin.
@@ -21,5 +50,19 @@ export function rolesFromAccessToken(token: string | null | undefined): string[]
 /** Only same-site /admin paths are allowed as a post-login destination. */
 export function safeAdminNext(next: string | null | undefined): string {
   const path = safeInternalPath(next, "/admin");
-  return path.startsWith("/admin") && !path.startsWith("/admin/login") && !path.startsWith("/admin/accept") ? path : "/admin";
+  return ADMIN_PATH_RE.test(path) && !path.startsWith("/admin/login") && !path.startsWith("/admin/accept") ? path : "/admin";
 }
+
+/** Only same-site /restaurant paths (excluding /restaurant/login and customer /restaurants/*) are allowed as a post-login destination. */
+export function safeRestaurantNext(next: string | null | undefined): string {
+  const path = safeInternalPath(next, "/restaurant");
+  return RESTAURANT_PATH_RE.test(path) && !path.startsWith("/restaurant/login") ? path : "/restaurant";
+}
+
+/** Only same-site /partner paths (excluding /partner/login) are allowed as a post-login destination. */
+export function safePartnerNext(next: string | null | undefined): string {
+  const path = safeInternalPath(next, "/partner");
+  return PARTNER_PATH_RE.test(path) && !path.startsWith("/partner/login") ? path : "/partner";
+}
+
+

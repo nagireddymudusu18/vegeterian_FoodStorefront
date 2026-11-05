@@ -2,3 +2,8 @@ export * from "./diet";
 export * from "./prefs-context";
 export * from "./DietSwitch";
 export * from "./Badges";
+export * from "./locations";
+export * from "./LocationSelector";
+export * from "./profile-prefs";
+export * from "./bulk-availability";
+

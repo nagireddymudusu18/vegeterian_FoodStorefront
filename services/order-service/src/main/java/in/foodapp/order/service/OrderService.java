@@ -108,6 +108,12 @@ public class OrderService {
         Instant now = Instant.now();
         Order order = new Order(UUID.randomUUID(), customerId, priced.restaurantId(), priced.subtotalPaise(),
                 priced.taxPaise(), priced.deliveryFeePaise(), priced.totalPaise(), key, now);
+        if (request.deliveryAddress() != null && !request.deliveryAddress().isBlank()) {
+            order.setDeliveryAddress(request.deliveryAddress().trim());
+        }
+        if (request.cookingInstructions() != null && !request.cookingInstructions().isBlank()) {
+            order.setCookingInstructions(request.cookingInstructions().trim());
+        }
         for (PricingService.PricedLine l : priced.lines()) {
             order.addItem(new OrderItem(l.itemId(), l.name(), l.unitPricePaise(), l.quantity(),
                     l.lineTotalPaise()));
@@ -187,11 +193,19 @@ public class OrderService {
 
     @Transactional
     public OrderView cancel(UUID orderId, UUID customerId) {
+        return cancel(orderId, customerId, null);
+    }
+
+    @Transactional
+    public OrderView cancel(UUID orderId, UUID customerId, String reason) {
         Order order = load(orderId);
         if (!order.getCustomerId().equals(customerId)) {
             throw ApiException.forbidden("You do not own this order");
         }
-        transitions.transition(order, OrderStatus.CANCELLED, "CUSTOMER_CANCELLED");
+        String eventReason = (reason == null || reason.isBlank())
+                ? "CUSTOMER_CANCELLED"
+                : "CUSTOMER_CANCELLED: " + reason.trim();
+        transitions.transition(order, OrderStatus.CANCELLED, eventReason);
         return OrderView.from(order, true);
     }
 
