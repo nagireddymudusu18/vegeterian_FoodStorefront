@@ -7,7 +7,9 @@ import {
   applyBulkAvailabilityToMenu,
   CertBadge,
   computeBulkPricePreview,
+  CulinaryAssetPicker,
   DietBadges,
+  DishThumbnailAsset,
   findDietViolations,
   selectDishesByAvailability,
   summarizeBulkSelection,
@@ -43,6 +45,7 @@ export default function RestaurantMenuPage() {
   const [isJain, setIsJain] = useState(false);
   const [ingredientsText, setIngredientsText] = useState("");
   const [allergensText, setAllergensText] = useState("");
+  const [imageUrl, setImageUrl] = useState("");
   const [available, setAvailable] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -86,6 +89,7 @@ export default function RestaurantMenuPage() {
     setIsJain(false);
     setIngredientsText("");
     setAllergensText("");
+    setImageUrl("");
     setAvailable(true);
   };
 
@@ -99,6 +103,7 @@ export default function RestaurantMenuPage() {
     setIsJain(item.isJain);
     setIngredientsText(toList(item.ingredients).join(", "));
     setAllergensText(toList(item.containsAllergens).join(", "));
+    setImageUrl(item.imageUrl ?? "");
     setAvailable(item.available);
   };
 
@@ -108,7 +113,7 @@ export default function RestaurantMenuPage() {
     try {
       const updated = await catalog.setAvailability(item.id, !item.available);
       setMenu((prev) => (prev ? prev.map((m) => (m.id === item.id ? updated : m)) : prev));
-      toast.success(updated.available ? `${item.name} marked available` : `${item.name} 86'd (unavailable)`);
+      toast.success(updated.available ? `${item.name} marked in stock` : `${item.name} marked out of stock`);
     } catch (e) {
       setError(e);
     } finally {
@@ -143,8 +148,8 @@ export default function RestaurantMenuPage() {
       const count = updatedItems.length;
       toast.success(
         targetAvailable
-          ? `Marked ${count} ${count === 1 ? "dish" : "dishes"} available`
-          : `86'd ${count} ${count === 1 ? "dish" : "dishes"} (marked unavailable)`,
+          ? `Marked ${count} ${count === 1 ? "dish" : "dishes"} in stock`
+          : `Marked ${count} ${count === 1 ? "dish" : "dishes"} out of stock`,
       );
     } catch (e) {
       setError(e);
@@ -170,7 +175,7 @@ export default function RestaurantMenuPage() {
       setMenu((prev) => (prev ? applyBulkAvailabilityToMenu(prev, updatedItems) : prev));
       const count = updatedItems.length;
       toast.success(
-        `Toggled availability for ${count} ${count === 1 ? "dish" : "dishes"} (${bulkSummary.targetIdsToMakeAvailable.length} available, ${bulkSummary.targetIdsToMakeUnavailable.length} 86'd)`,
+        `Toggled availability for ${count} ${count === 1 ? "dish" : "dishes"} (${bulkSummary.targetIdsToMakeAvailable.length} in stock, ${bulkSummary.targetIdsToMakeUnavailable.length} out of stock)`,
       );
     } catch (e) {
       setError(e);
@@ -228,6 +233,7 @@ export default function RestaurantMenuPage() {
       ingredients: parsedIngredients,
       containsAllergens: parsedAllergens,
       available,
+      imageUrl: imageUrl.trim() || null,
     };
     try {
       if (editingId) {
@@ -257,9 +263,9 @@ export default function RestaurantMenuPage() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-extrabold tracking-tight">Menu &amp; 86 availability</h1>
+          <h1 className="text-2xl font-extrabold tracking-tight">Menu &amp; Stock Availability</h1>
           <p className="text-sm text-stone-600">
-            Toggle dish availability in real time or add/edit dishes with live Pure-Veg, Vegan, and Jain ingredient checks.
+            Update dish availability in real time or add and edit dishes with live Pure-Veg, Vegan, and Jain ingredient checks.
           </p>
         </div>
         {restaurants.length > 1 && (
@@ -443,9 +449,11 @@ export default function RestaurantMenuPage() {
           </label>
         </div>
 
+        <CulinaryAssetPicker value={imageUrl} onChange={setImageUrl} label="Dish photo (optional)" />
+
         {violations.length > 0 && (
           <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-3 text-xs text-red-900">
-            <p className="font-bold">Diet rule guardrail triggered:</p>
+            <p className="font-bold">Dietary certification check:</p>
             <ul className="mt-1 list-disc space-y-0.5 pl-4">
               {violations.map((v, i) => (
                 <li key={i}>{v}</li>
@@ -468,7 +476,7 @@ export default function RestaurantMenuPage() {
           </h2>
           {menu && menu.length > 0 && (
             <span className="text-xs font-medium text-stone-600" aria-live="polite">
-              {menu.filter((m) => m.available).length} available · {menu.filter((m) => !m.available).length} 86&apos;d
+              {menu.filter((m) => m.available).length} in stock · {menu.filter((m) => !m.available).length} out of stock
             </span>
           )}
         </div>
@@ -510,7 +518,7 @@ export default function RestaurantMenuPage() {
                     onClick={() => handleSelectByStatus(false)}
                     className="rounded-lg border border-stone-300 bg-white px-2.5 py-1 font-semibold text-stone-700 hover:bg-stone-100"
                   >
-                    Select 86&apos;d ({menu.filter((m) => !m.available).length})
+                    Select out of stock ({menu.filter((m) => !m.available).length})
                   </button>
                   {bulkSummary.totalSelected > 0 && (
                     <button
@@ -527,7 +535,7 @@ export default function RestaurantMenuPage() {
                   <span className="text-xs font-semibold text-stone-700" aria-live="polite">
                     {bulkSummary.totalSelected === 0
                       ? "Select dishes to bulk-edit"
-                      : `${bulkSummary.totalSelected} selected (${bulkSummary.availableCount} available, ${bulkSummary.unavailableCount} 86'd)`}
+                      : `${bulkSummary.totalSelected} selected (${bulkSummary.availableCount} in stock, ${bulkSummary.unavailableCount} out of stock)`}
                   </span>
                   <button
                     type="button"
@@ -543,7 +551,7 @@ export default function RestaurantMenuPage() {
                     onClick={() => void handleBulkSetAvailability(false)}
                     className="rounded-xl bg-amber-700 px-3 py-1.5 text-xs font-bold text-white hover:bg-amber-800 disabled:opacity-45"
                   >
-                    {bulkBusy ? "Updating..." : "86 selected (Mark unavailable)"}
+                    {bulkBusy ? "Updating..." : "Mark selected out of stock"}
                   </button>
                   <button
                     type="button"
@@ -621,6 +629,7 @@ export default function RestaurantMenuPage() {
                         aria-label={`Select ${item.name}`}
                         className="mt-1 h-4 w-4 shrink-0 cursor-pointer rounded accent-green-700"
                       />
+                      <DishThumbnailAsset item={item} restaurantName={currentRestaurant?.name} />
                       <div className="min-w-0 space-y-1">
                         <div className="flex flex-wrap items-center gap-2">
                           <DietBadges item={item} />
@@ -628,7 +637,7 @@ export default function RestaurantMenuPage() {
                           <span className="text-sm font-semibold text-stone-700">{formatPaise(item.pricePaise)}</span>
                           {!item.available && (
                             <span className="rounded bg-stone-200 px-2 py-0.5 text-xs font-semibold text-stone-700">
-                              86&apos;d
+                              Out of stock
                             </span>
                           )}
                         </div>
@@ -654,7 +663,7 @@ export default function RestaurantMenuPage() {
                           item.available ? "bg-amber-700 hover:bg-amber-800" : "bg-green-700 hover:bg-green-800"
                         }`}
                       >
-                        {item.available ? "86 (Mark unavailable)" : "Mark available"}
+                        {item.available ? "Mark out of stock" : "Mark available"}
                       </button>
                     </div>
                   </li>
@@ -676,7 +685,7 @@ export default function RestaurantMenuPage() {
       >
         <div className="space-y-3">
           <p className="text-xs text-stone-600">
-            Review the new prices below before applying. Active carts and new orders will immediately use the updated server prices.
+            Review the new prices below before applying. Updated prices take effect immediately for new orders.
           </p>
           <ul className="max-h-56 divide-y divide-stone-200 overflow-y-auto rounded-xl border border-stone-200 bg-stone-50 px-3 py-2 text-xs">
             {bulkPricePreview.changes.map((c) => (

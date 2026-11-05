@@ -24,7 +24,9 @@ import { useCart } from "@/features/cart";
 import { formatPaise } from "@/lib/money";
 import { useRequireAuth } from "@/features/auth";
 import { useFlag } from "@/features/flags";
-import { ConfirmDialog, ErrorBox, Spinner } from "@/components/ui";
+import { ConfirmDialog, ErrorBox } from "@/components/ui";
+import { OrderDetailSkeleton } from "@/components/Skeletons";
+import { RestaurantReviewsSection } from "@/features/reviews/RestaurantReviewsSection";
 
 const POLL_MS = 3000;
 const POLL_LIVE_MS = 15000;
@@ -127,8 +129,8 @@ export default function OrderPage() {
     router.push("/cart");
   };
 
-  if (!authed) return <Spinner label="Loading order" />;
-  if (loading) return <Spinner label="Loading order" />;
+  if (!authed) return <OrderDetailSkeleton label="Loading order" />;
+  if (loading) return <OrderDetailSkeleton label="Loading order" />;
   if (!order) return <ErrorBox error={error} onRetry={() => setNonce((n) => n + 1)} />;
 
   const failed = isFailure(order.status);
@@ -178,7 +180,7 @@ export default function OrderPage() {
         )}
         <p className="mt-2 flex flex-wrap items-center gap-2 text-sm text-stone-600" aria-live="polite">
           <span>Status:</span> <StatusPill status={order.status} />
-          {following && !isFinal(order.status) && <span>{live ? "(live)" : "(updating every 3 seconds)"}</span>}
+          {following && !isFinal(order.status) && <span>{live ? "· Live updates active" : "· Auto-refreshing"}</span>}
         </p>
       </header>
 
@@ -281,7 +283,7 @@ export default function OrderPage() {
           <div className="flex flex-wrap items-start justify-between gap-2 border-b border-stone-300 pb-3">
             <div>
               <p className="text-[11px] font-bold uppercase tracking-widest text-[#1B5E3A]">
-                Veggo Eats · Tax Invoice (GST)
+                Veggo Eats · Tax Invoice (GST Sec 9(5) ECO)
               </p>
               <h2 id="gst-inv-h" className="text-base font-extrabold text-stone-900">
                 Invoice #{order.orderNumber ?? order.id.slice(0, 8)}
@@ -289,6 +291,7 @@ export default function OrderPage() {
               <p className="text-xs text-stone-600">
                 Kitchen: <strong>{order.restaurantName ?? "Partner Kitchen"}</strong>
                 {order.createdAt ? ` · Issued ${new Date(order.createdAt).toLocaleString("en-IN")}` : ""}
+                {order.taxBreakdown ? ` · Place of Supply: ${order.taxBreakdown.placeOfSupply}` : ""}
               </p>
             </div>
             <button
@@ -300,35 +303,75 @@ export default function OrderPage() {
             </button>
           </div>
 
+          {order.taxBreakdown && order.taxBreakdown.lines.length > 0 && (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs text-stone-700">
+                <thead>
+                  <tr className="border-b border-stone-300 text-stone-500">
+                    <th className="py-1 pr-2 font-semibold">Dish</th>
+                    <th className="py-1 px-2 font-semibold">HSN/SAC</th>
+                    <th className="py-1 px-2 text-right font-semibold">Taxable</th>
+                    <th className="py-1 px-2 text-right font-semibold">CGST</th>
+                    <th className="py-1 pl-2 text-right font-semibold">SGST</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-stone-200 font-mono">
+                  {order.taxBreakdown.lines.map((line) => (
+                    <tr key={line.itemId}>
+                      <td className="py-1 pr-2 font-sans font-medium text-ink">
+                        {line.quantity}x {line.name}
+                      </td>
+                      <td className="py-1 px-2">{line.hsnSac}</td>
+                      <td className="py-1 px-2 text-right tabular-nums">{formatPaise(line.taxableValuePaise)}</td>
+                      <td className="py-1 px-2 text-right tabular-nums">
+                        {formatPaise(line.cgstPaise)} ({line.cgstRatePercent}%)
+                      </td>
+                      <td className="py-1 pl-2 text-right tabular-nums">
+                        {formatPaise(line.sgstPaise)} ({line.sgstRatePercent}%)
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
           <div className="space-y-1 text-xs text-stone-700">
             <div className="flex justify-between">
               <span>Food Subtotal (HSN/SAC 996331)</span>
-              <span>{formatPaise(order.subtotalPaise)}</span>
+              <span className="font-mono tabular-nums">{formatPaise(order.subtotalPaise)}</span>
             </div>
             <div className="flex justify-between">
               <span>CGST (2.5%)</span>
-              <span>{formatPaise(halfTaxPaise)}</span>
+              <span className="font-mono tabular-nums">{formatPaise(order.taxBreakdown?.totalCgstPaise ?? halfTaxPaise)}</span>
             </div>
             <div className="flex justify-between">
               <span>SGST (2.5%)</span>
-              <span>{formatPaise(order.taxPaise - halfTaxPaise)}</span>
+              <span className="font-mono tabular-nums">{formatPaise(order.taxBreakdown?.totalSgstPaise ?? order.taxPaise - halfTaxPaise)}</span>
             </div>
             <div className="flex justify-between">
-              <span>Delivery &amp; Packaging Charges</span>
-              <span>{formatPaise(order.deliveryFeePaise)}</span>
+              <span>Delivery &amp; Packaging Charges (SAC 996812)</span>
+              <span className="font-mono tabular-nums">{formatPaise(order.deliveryFeePaise)}</span>
             </div>
             <div className="flex justify-between border-t border-stone-300 pt-2 text-sm font-bold text-stone-900">
               <span>Grand Total (INR)</span>
-              <span>{formatPaise(order.totalPaise)}</span>
+              <span className="font-mono tabular-nums">{formatPaise(order.totalPaise)}</span>
             </div>
           </div>
         </section>
       )}
 
       <section className="card p-4" aria-labelledby="sum-h">
-        <h2 id="sum-h" className="mb-2 font-semibold">
-          Bill (confirmed by server)
-        </h2>
+        <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+          <h2 id="sum-h" className="font-semibold">
+            Bill summary
+          </h2>
+          {order.paymentMethodLabel && (
+            <span className="text-xs font-semibold text-green-800">
+              Paid via {order.paymentMethodLabel}
+            </span>
+          )}
+        </div>
         {order.items && order.items.length > 0 && (
           <ul className="mb-3 space-y-1 text-sm">
             {order.items.map((it, i) => {
@@ -354,6 +397,15 @@ export default function OrderPage() {
           </div>
         </dl>
       </section>
+
+      {order.restaurantId && (
+        <RestaurantReviewsSection
+          restaurantId={order.restaurantId}
+          restaurantName={order.restaurantName ?? "Partner Kitchen"}
+          orderId={order.id}
+          menuDishNames={(order.items ?? []).map((i) => i.name ?? "").filter(Boolean)}
+        />
+      )}
 
       {order.timeline && order.timeline.length > 0 && (
         <section className="card p-4" aria-labelledby="timeline-h">

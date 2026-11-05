@@ -2,15 +2,25 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-import { errorMessage, orders, payments, type Order } from "@/lib/api";
+import { errorMessage, orders, payments, type CreatePaymentMeta, type Order } from "@/lib/api";
 import { cartAllergens, cartDietConflicts, estimatedSubtotalPaise, toOrderLines, type Cart, useCart } from "@/features/cart";
 import { dietLabel, openLocationPickerModal, usePrefs } from "@/features/catalog";
+import {
+  computeCustomerGroupOrderPricing,
+  DEFAULT_ORG_CUSTOMER_GROUP_RULES,
+  DIETARY_COHORT_META,
+  LOYALTY_TIER_META,
+} from "@/features/customer-groups";
+import { calculateOrderTaxBreakdown } from "@/features/tax/gst-engine";
+import { PaymentGatewayModal } from "@/features/payments/PaymentGatewayModal";
 import { formatPaise } from "@/lib/money";
 import { OtpLogin, useAuth } from "@/features/auth";
 import { useFlag } from "@/features/flags";
-import { ErrorBox, Spinner } from "@/components/ui";
+import { ButtonSpinner, ErrorBox, ProgressiveLoader } from "@/components/ui";
+import { CheckoutSkeleton } from "@/components/Skeletons";
+import { resolveCheckoutProgressState } from "@/features/ux/form-validation";
 
 const KEY = "sf.checkout.v1";
 
@@ -70,6 +80,7 @@ export default function CheckoutPage() {
   const [phase, setPhase] = useState<Phase>("idle");
   const [error, setError] = useState<unknown>(null);
   const [placed, setPlaced] = useState<Order | null>(null);
+  const [gatewayOpen, setGatewayOpen] = useState(false);
   const [deliveryNotes, setDeliveryNotes] = useState("");
   const [cookingInstructions, setCookingInstructions] = useState("");
   const attempt = useRef<Attempt | null>(null);
@@ -84,13 +95,40 @@ export default function CheckoutPage() {
     if (ready && cart.lines.length > 0) attempt.current = loadAttempt(signature(cart));
   }, [ready, cart]);
 
-  if (!ready || auth.status === "loading") return <Spinner label="Preparing checkout" />;
+  const subtotalPaise = estimatedSubtotalPaise(cart);
+  const cg = auth.me?.customerGroup;
+  const groupPricing = cg
+    ? computeCustomerGroupOrderPricing(
+        subtotalPaise,
+        cg.loyaltyTier,
+        auth.me?.orgRules ?? DEFAULT_ORG_CUSTOMER_GROUP_RULES,
+      )
+    : null;
+
+  const liveTaxBreakdown = useMemo(
+    () =>
+      calculateOrderTaxBreakdown({
+        lines: cart.lines.map((l) => ({
+          itemId: l.itemId,
+          name: l.name,
+          quantity: l.quantity,
+          unitPricePaise: l.pricePaise,
+        })),
+        discountPercent: groupPricing?.discountPercent ?? 0,
+        deliveryFeePaise: groupPricing?.deliveryFeePaise ?? 3000,
+        supplierStateCode: "29",
+        customerStateCode: "29",
+      }),
+    [cart.lines, groupPricing?.discountPercent, groupPricing?.deliveryFeePaise],
+  );
+
+  if (!ready || auth.status === "loading") return <CheckoutSkeleton label="Preparing checkout" />;
 
   if (cart.lines.length === 0 || !cart.restaurantId) {
     return (
-      <div className="rounded-lg border border-dashed border-stone-300 p-8 text-center">
-        <p className="mb-3">Nothing to check out.</p>
-        <Link href="/" className="font-medium text-green-800 underline">
+      <div className="rounded-2xl border border-dashed border-stone-300 bg-white/70 p-8 text-center">
+        <p className="mb-3 font-medium text-stone-700">Nothing to check out.</p>
+        <Link href="/" className="btn-primary inline-flex px-5 py-2.5 text-sm">
           Browse restaurants
         </Link>
       </div>
@@ -105,29 +143,38 @@ export default function CheckoutPage() {
     return deliveryNotes.trim() ? `${base} — ${deliveryNotes.trim()}` : base;
   })().slice(0, 200);
 
-  const pay = async (a: Attempt) => {
+  const executePaymentWithMeta = async (a: Attempt, meta?: CreatePaymentMeta) => {
     if (!a.order) return;
     setPhase("paying");
     setError(null);
     a.payKey ??= crypto.randomUUID();
     saveAttempt(a);
     try {
-      const p = await payments.create(a.order.id, a.order.totalPaise, a.payKey);
+      const p = await payments.create(a.order.id, a.order.totalPaise, a.payKey, meta);
       if (isPaymentFailure(p.status)) {
-        setError(new Error(`Payment ${p.status.toLowerCase()}. You have not been charged.`));
+        setGatewayOpen(false);
+        setError(
+          new Error(
+            p.failureReason ||
+              `Payment ${p.status.toLowerCase()}. You have not been charged.`,
+          ),
+        );
         setPhase("payment-failed");
         return;
       }
+      setGatewayOpen(false);
       saveAttempt(null);
       clear();
+      toast.success(`Payment verified (${p.methodLabel ?? "UPI"})`);
       router.replace(`/orders/${encodeURIComponent(a.order.id)}`);
     } catch (e) {
+      setGatewayOpen(false);
       setError(e);
       setPhase("payment-failed");
     }
   };
 
-  const place = async () => {
+  const initiateOrderAndOpenGateway = async () => {
     if (busy.current) return;
     busy.current = true;
     try {
@@ -151,22 +198,31 @@ export default function CheckoutPage() {
           return;
         }
       }
-      await pay(a);
+      setPhase("idle");
+      setGatewayOpen(true);
     } finally {
       busy.current = false;
     }
   };
 
-  const retryPayment = async () => {
+  const handleConfirmGatewayPayment = async (meta: CreatePaymentMeta) => {
+    if (busy.current) return;
     const a = attempt.current;
-    if (!a?.order || busy.current) return;
+    if (!a?.order) return;
     busy.current = true;
     try {
-      a.payKey = crypto.randomUUID(); // new payment attempt = new key
-      await pay(a);
+      a.payKey = crypto.randomUUID();
+      await executePaymentWithMeta(a, meta);
     } finally {
       busy.current = false;
     }
+  };
+
+  const retryPayment = () => {
+    const a = attempt.current;
+    if (!a?.order || busy.current) return;
+    setError(null);
+    setGatewayOpen(true);
   };
 
   const startOver = () => {
@@ -174,6 +230,7 @@ export default function CheckoutPage() {
     attempt.current = { signature: signature(cart), orderKey: crypto.randomUUID() };
     setPlaced(null);
     setError(null);
+    setGatewayOpen(false);
     setPhase("idle");
   };
 
@@ -191,7 +248,8 @@ export default function CheckoutPage() {
 
   const guest = auth.status !== "authed";
   const working = phase === "creating" || phase === "paying";
-  const total = attempt.current?.order?.totalPaise ?? placed?.totalPaise;
+  const progressState = resolveCheckoutProgressState(phase);
+  const total = attempt.current?.order?.totalPaise ?? placed?.totalPaise ?? liveTaxBreakdown.grandTotalPaise;
   const conflicts = cartDietConflicts(cart, diet);
   const allergens = cartAllergens(cart);
 
@@ -203,6 +261,15 @@ export default function CheckoutPage() {
           Order from <span className="font-semibold">{cart.restaurantName}</span>
         </p>
       </div>
+
+      {progressState.active && (
+        <ProgressiveLoader
+          headline={progressState.headline}
+          subline={progressState.subline}
+          percent={progressState.percent}
+          steps={progressState.steps}
+        />
+      )}
 
       {conflicts.length > 0 && (
         <div
@@ -276,26 +343,40 @@ export default function CheckoutPage() {
           </div>
         )}
 
-        <input
-          type="text"
-          maxLength={120}
-          value={deliveryNotes}
-          onChange={(e) => setDeliveryNotes(e.target.value)}
-          placeholder="Door / flat number, floor, or gate drop instructions (optional)"
-          aria-label="Door, flat, or delivery drop instructions"
-          className="w-full rounded-xl border border-stone-300 bg-white px-3 py-2 text-sm"
-        />
+        <div>
+          <input
+            type="text"
+            maxLength={120}
+            value={deliveryNotes}
+            onChange={(e) => setDeliveryNotes(e.target.value)}
+            placeholder="Door / flat number, floor, or gate drop instructions (optional)"
+            aria-label="Door, flat, or delivery drop instructions"
+            className="w-full rounded-xl border border-stone-300 bg-white px-3 py-2 text-sm focus:border-green-600 focus:outline-none"
+          />
+          {deliveryNotes.length > 0 && (
+            <p className="mt-1 text-right font-mono text-[11px] text-stone-500">
+              {deliveryNotes.length}/120 characters
+            </p>
+          )}
+        </div>
       </section>
 
       {/* Kitchen Cooking & Dietary Instructions */}
       <section className="card space-y-3 p-4" aria-labelledby="chk-notes-h">
-        <div>
-          <h2 id="chk-notes-h" className="text-sm font-bold text-stone-900">
-            Cooking &amp; dietary instructions for the kitchen
-          </h2>
-          <p className="text-xs text-stone-600">
-            Shared directly on the kitchen preparation ticket.
-          </p>
+        <div className="flex items-start justify-between gap-2">
+          <div>
+            <h2 id="chk-notes-h" className="text-sm font-bold text-stone-900">
+              Cooking &amp; dietary instructions for the kitchen
+            </h2>
+            <p className="text-xs text-stone-600">
+              Shared directly on the kitchen preparation ticket.
+            </p>
+          </div>
+          {cookingInstructions.length > 0 && (
+            <span className="font-mono text-[11px] text-stone-500">
+              {cookingInstructions.length}/200
+            </span>
+          )}
         </div>
         <div className="flex flex-wrap gap-1.5" role="group" aria-label="Quick cooking instructions">
           {COOKING_PRESETS.map((preset) => {
@@ -324,7 +405,7 @@ export default function CheckoutPage() {
           onChange={(e) => setCookingInstructions(e.target.value)}
           placeholder="E.g. Jain preparation, no ginger/garlic, pack chutney separately"
           aria-label="Cooking instructions for the kitchen"
-          className="w-full rounded-xl border border-stone-300 bg-white px-3 py-2 text-sm"
+          className="w-full rounded-xl border border-stone-300 bg-white px-3 py-2 text-sm focus:border-green-600 focus:outline-none"
         />
       </section>
 
@@ -338,30 +419,107 @@ export default function CheckoutPage() {
                   <span className="ml-2 rounded bg-red-100 px-1.5 py-0.5 text-xs font-semibold text-red-800">Non-veg</span>
                 )}
               </span>
-              <span className="font-semibold">{formatPaise(l.pricePaise * l.quantity)}</span>
+              <span className="font-semibold tabular-nums">{formatPaise(l.pricePaise * l.quantity)}</span>
             </li>
           ))}
         </ul>
         <div className="space-y-2 border-t border-stone-200 bg-stone-50 p-4 text-sm">
+          {cg && groupPricing && (
+            <div className="mb-2 rounded-xl border border-emerald-200 bg-emerald-50/80 p-3 text-xs text-emerald-950">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="font-bold">
+                  Veggo Pass: {LOYALTY_TIER_META[cg.loyaltyTier].label}
+                </span>
+                <span className="rounded bg-white px-2 py-0.5 font-semibold text-emerald-900">
+                  Dietary Profile: {DIETARY_COHORT_META[cg.dietaryCohort].label}
+                </span>
+              </div>
+              <p className="mt-1 text-emerald-800">
+                {groupPricing.appliedRuleSummary} · Automatically applied
+              </p>
+            </div>
+          )}
           <div className="flex justify-between font-semibold">
-            <span>Estimated subtotal</span>
-            <span>{formatPaise(estimatedSubtotalPaise(cart))}</span>
+            <span>Item subtotal</span>
+            <span className="tabular-nums">{formatPaise(subtotalPaise)}</span>
           </div>
+          {liveTaxBreakdown.discountPaise > 0 && (
+            <div className="flex justify-between font-semibold text-emerald-800">
+              <span>Member discount ({groupPricing?.discountPercent ?? 0}% off)</span>
+              <span className="tabular-nums">-{formatPaise(liveTaxBreakdown.discountPaise)}</span>
+            </div>
+          )}
+          <div className="flex justify-between text-stone-700">
+            <span>Delivery fee (SAC {liveTaxBreakdown.deliveryHsnSac})</span>
+            <span className={liveTaxBreakdown.deliveryFeePaise === 0 ? "font-bold text-emerald-800" : "tabular-nums"}>
+              {liveTaxBreakdown.deliveryFeePaise === 0
+                ? "FREE (VIP · Veggo Pass)"
+                : formatPaise(liveTaxBreakdown.deliveryFeePaise)}
+            </span>
+          </div>
+          <div className="flex justify-between text-stone-700">
+            <span>
+              GST &amp; E-Commerce Operator Taxes (CGST + SGST)
+            </span>
+            <span className="font-mono tabular-nums">{formatPaise(liveTaxBreakdown.totalTaxPaise)}</span>
+          </div>
+
+          {/* Expandable HSN/SAC GST Calculation Breakdown */}
+          <details className="rounded-xl border border-stone-200 bg-white px-3.5 py-2.5 text-xs text-stone-700">
+            <summary className="cursor-pointer font-semibold text-green-800 hover:underline">
+              View HSN/SAC GST tax calculation breakdown (Sec 9(5) CGST Act)
+            </summary>
+            <div className="mt-2.5 space-y-2 border-t border-stone-100 pt-2">
+              <div className="flex flex-wrap items-center justify-between gap-1 text-[11px] text-stone-500">
+                <span>Place of Supply: {liveTaxBreakdown.placeOfSupply}</span>
+                <span>Supply Type: {liveTaxBreakdown.interState ? "Inter-State (IGST)" : "Intra-State (CGST + SGST)"}</span>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-[11px]">
+                  <thead>
+                    <tr className="border-b border-stone-200 text-stone-500">
+                      <th className="py-1 pr-2 font-semibold">Item</th>
+                      <th className="py-1 px-2 font-semibold">HSN/SAC</th>
+                      <th className="py-1 px-2 text-right font-semibold">Taxable</th>
+                      <th className="py-1 px-2 text-right font-semibold">CGST</th>
+                      <th className="py-1 pl-2 text-right font-semibold">SGST</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-stone-100 font-mono">
+                    {liveTaxBreakdown.lines.map((line) => (
+                      <tr key={line.itemId}>
+                        <td className="py-1 pr-2 font-sans font-medium text-ink">
+                          {line.quantity}x {line.name}
+                        </td>
+                        <td className="py-1 px-2 text-stone-600">{line.hsnSac}</td>
+                        <td className="py-1 px-2 text-right tabular-nums">{formatPaise(line.taxableValuePaise)}</td>
+                        <td className="py-1 px-2 text-right tabular-nums">
+                          {formatPaise(line.cgstPaise)} ({line.cgstRatePercent}%)
+                        </td>
+                        <td className="py-1 pl-2 text-right tabular-nums">
+                          {formatPaise(line.sgstPaise)} ({line.sgstRatePercent}%)
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div className="flex justify-between border-t border-stone-100 pt-1.5 font-semibold text-ink">
+                <span>Total CGST ({formatPaise(liveTaxBreakdown.totalCgstPaise)}) + SGST ({formatPaise(liveTaxBreakdown.totalSgstPaise)})</span>
+                <span className="font-mono tabular-nums">{formatPaise(liveTaxBreakdown.totalTaxPaise)}</span>
+              </div>
+            </div>
+          </details>
+
           {allergens.length > 0 && (
             <p className="text-xs text-amber-900">
               Allergens in order: <strong>{allergens.join(", ")}</strong>
             </p>
           )}
-          {total !== undefined ? (
-            <div className="flex justify-between text-base font-bold">
-              <span>Total confirmed by server</span>
-              <span>{formatPaise(total)}</span>
-            </div>
-          ) : (
-            <p className="text-stone-600">
-              The final total (including 5% GST and ₹30 delivery fee) is calculated by the server when you place the order.
-            </p>
-          )}
+          <div className="flex justify-between border-t border-stone-200 pt-2 text-base font-bold">
+            <span>Total payable</span>
+            <span className="font-mono tabular-nums">{formatPaise(total)}</span>
+          </div>
         </div>
       </div>
 
@@ -392,15 +550,23 @@ export default function CheckoutPage() {
       {error !== null && phase !== "payment-failed" && <ErrorBox error={error} />}
 
       {phase === "payment-failed" && (
-        <div role="alert" className="space-y-3 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-900">
-          <p className="font-semibold">Payment failed</p>
+        <div role="alert" className="space-y-3 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-900">
+          <p className="font-semibold">Payment declined</p>
           <p>{errorMessage(error)}</p>
-          <p>Your order has been created. You can retry the payment, or start over with a new order.</p>
+          <p>Your kitchen order #{attempt.current?.order?.id.slice(0, 8)} is reserved. Choose another payment method or retry.</p>
           <div className="flex flex-wrap gap-2">
-            <button type="button" onClick={retryPayment} className="rounded-lg bg-red-700 px-4 py-2 font-semibold text-white hover:bg-red-800">
-              Retry payment
+            <button
+              type="button"
+              onClick={retryPayment}
+              className="rounded-xl bg-red-700 px-4 py-2 font-semibold text-white hover:bg-red-800"
+            >
+              Open payment gateway to retry
             </button>
-            <button type="button" onClick={startOver} className="rounded-lg border border-red-300 px-4 py-2 font-medium hover:bg-red-100">
+            <button
+              type="button"
+              onClick={startOver}
+              className="rounded-xl border border-red-300 px-4 py-2 font-medium hover:bg-red-100"
+            >
               Start over
             </button>
           </div>
@@ -410,11 +576,16 @@ export default function CheckoutPage() {
       {phase !== "payment-failed" && !guest && (
         <button
           type="button"
-          onClick={place}
+          onClick={initiateOrderAndOpenGateway}
           disabled={working}
           className="btn-primary w-full text-lg"
         >
-          {phase === "creating" ? "Placing order..." : phase === "paying" ? "Processing payment..." : "Place order and pay"}
+          {working && <ButtonSpinner className="h-5 w-5 border-white/35 border-t-white" />}
+          {phase === "creating"
+            ? "Creating kitchen order..."
+            : phase === "paying"
+              ? "Verifying payment..."
+              : `Proceed to pay ${formatPaise(total)}`}
         </button>
       )}
       <p className="text-center text-xs text-stone-500">
@@ -422,6 +593,20 @@ export default function CheckoutPage() {
           Back to cart
         </Link>
       </p>
+
+      {attempt.current?.order && (
+        <PaymentGatewayModal
+          open={gatewayOpen}
+          onOpenChange={(nextOpen) => {
+            if (phase !== "paying") setGatewayOpen(nextOpen);
+          }}
+          orderNumber={placed?.orderNumber ?? attempt.current.order.id.slice(0, 8)}
+          amountPaise={attempt.current.order.totalPaise}
+          restaurantName={cart.restaurantName ?? "Veggo Partner Kitchen"}
+          busy={phase === "paying"}
+          onConfirmPayment={handleConfirmGatewayPayment}
+        />
+      )}
     </div>
   );
 }

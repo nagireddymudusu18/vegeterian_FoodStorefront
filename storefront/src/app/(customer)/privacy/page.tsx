@@ -7,7 +7,7 @@ export default function PrivacyPage() {
   return (
     <article className="mx-auto max-w-3xl space-y-4 text-stone-800">
       <h1 className="page-title">Privacy policy</h1>
-      <p className="text-sm text-stone-500">Last updated: {BRAND.updated}. Draft: have it reviewed by a lawyer before launch.</p>
+      <p className="text-sm text-stone-500">Last updated: {BRAND.updated}</p>
       <p>
         {BRAND.name} ({BRAND.legalName}, {BRAND.address}) respects your privacy and processes personal data in line
         with India&apos;s Digital Personal Data Protection Act, 2023.

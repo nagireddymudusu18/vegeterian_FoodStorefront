@@ -21,7 +21,7 @@ export default function RestaurantLayout({ children }: { children: ReactNode }) 
   const links = allowed
     ? [
         { href: "/restaurant", label: "Orders" },
-        { href: "/restaurant/menu", label: "Menu & 86" },
+        { href: "/restaurant/menu", label: "Menu & Availability" },
       ]
     : [];
   return (

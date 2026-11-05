@@ -1,4 +1,31 @@
 import { getTokens, setTokens } from "./tokens";
+import {
+  resolveAccountDomain,
+  type AccountDomain,
+  type CustomerDietaryCohort,
+  type CustomerGroupProfile,
+  type CustomerLoyaltyTier,
+  type GroupAssignmentMode,
+  type OrgCustomerGroupRules,
+} from "@/features/customer-groups";
+import type { AddressSuggestion } from "@/features/catalog/address-autocomplete";
+import type { TaxQuoteBreakdown } from "@/features/tax/gst-engine";
+import type { PaymentMethodKind } from "@/features/payments/payment-gateway";
+import type { RestaurantRatingSummary, RestaurantReview } from "@/features/reviews/reviews-engine";
+
+export type {
+  AccountDomain,
+  AddressSuggestion,
+  CustomerDietaryCohort,
+  CustomerGroupProfile,
+  CustomerLoyaltyTier,
+  GroupAssignmentMode,
+  OrgCustomerGroupRules,
+  PaymentMethodKind,
+  RestaurantRatingSummary,
+  RestaurantReview,
+  TaxQuoteBreakdown,
+};
 
 export const API_BASE = "";
 
@@ -23,6 +50,9 @@ export interface Me {
   emailVerified?: boolean;
   hasPassword: boolean;
   roles: string[];
+  accountDomain?: AccountDomain;
+  customerGroup?: CustomerGroupProfile | null;
+  orgRules?: OrgCustomerGroupRules | null;
   status?: string;
   createdAt?: string;
 }
@@ -52,7 +82,9 @@ export interface Restaurant {
   cuisine?: string;
   address?: string;
   fssaiNumber?: string;
+  imageUrl?: string | null;
   menu?: MenuItem[];
+  ratingSummary?: RestaurantRatingSummary;
   [k: string]: unknown;
 }
 
@@ -65,6 +97,7 @@ export interface MenuItem {
   isVegan: boolean;
   isJain: boolean;
   available: boolean;
+  imageUrl?: string | null;
   ingredients?: string[] | string | null;
   containsAllergens?: string[] | string | null;
 }
@@ -87,6 +120,9 @@ export interface Order {
   restaurantId?: string;
   restaurantName?: string;
   subtotalPaise: number;
+  discountPaise?: number;
+  discountPercent?: number;
+  appliedGroupRule?: string | null;
   taxPaise: number;
   deliveryFeePaise: number;
   totalPaise: number;
@@ -96,6 +132,8 @@ export interface Order {
   cookingInstructions?: string | null;
   cancellationReason?: string | null;
   timeline?: { status: string; at: string; reason?: string | null }[];
+  taxBreakdown?: TaxQuoteBreakdown | null;
+  paymentMethodLabel?: string | null;
   createdAt?: string;
   updatedAt?: string;
   [k: string]: unknown;
@@ -110,6 +148,11 @@ export interface Payment {
   status: string;
   gateway?: string;
   gatewayRef?: string | null;
+  gatewayOrderId?: string | null;
+  signature?: string | null;
+  signatureVerified?: boolean;
+  method?: PaymentMethodKind;
+  methodLabel?: string | null;
   failureReason?: string | null;
   createdAt?: string;
   updatedAt?: string;
@@ -135,6 +178,7 @@ export interface MenuItemPayload {
   containsAllergens: string[];
   ingredients: string[];
   available: boolean;
+  imageUrl?: string | null;
 }
 
 // ---------- Errors ----------
@@ -217,10 +261,19 @@ function buildUrl(service: Service, path: string, query?: ReqOptions["query"]): 
   return s ? `${url}?${s}` : url;
 }
 
+function currentClientDomain(): AccountDomain {
+  if (typeof window === "undefined") return "CUSTOMER";
+  return resolveAccountDomain({
+    hostname: window.location.hostname,
+    pathname: window.location.pathname,
+  });
+}
+
 async function send(service: Service, path: string, o: ReqOptions, token?: string): Promise<Response> {
   const headers: Record<string, string> = {
     Accept: "application/json, application/problem+json",
     "X-Request-Id": newRequestId(),
+    "X-Portal-Domain": currentClientDomain(),
   };
   if (o.body !== undefined) headers["Content-Type"] = "application/json";
   if (o.idempotencyKey) headers["Idempotency-Key"] = o.idempotencyKey;
@@ -338,25 +391,46 @@ function storeTokens(t: TokenResponse): TokenResponse {
 }
 
 export const identity = {
-  requestOtp: (phone: string) =>
-    request<void>("identity", "/auth/otp/request", { method: "POST", body: { phone } }),
+  requestOtp: (phone: string, accountDomain?: AccountDomain) =>
+    request<void>("identity", "/auth/otp/request", {
+      method: "POST",
+      body: { phone, accountDomain: accountDomain ?? currentClientDomain() },
+    }),
 
-  /** Signs in, or registers on first use. `name` is stored when the account has none (guest checkout). */
-  async verifyOtp(phone: string, code: string, name?: string): Promise<TokenResponse> {
+  /** Signs in, or registers on first use within the active module domain. */
+  async verifyOtp(
+    phone: string,
+    code: string,
+    name?: string,
+    accountDomain?: AccountDomain,
+  ): Promise<TokenResponse> {
     const trimmed = name?.trim();
+    const domain = accountDomain ?? currentClientDomain();
     return storeTokens(
       await request<TokenResponse>("identity", "/auth/otp/verify", {
         method: "POST",
-        body: { phone, code, consent: CONSENT, ...(trimmed ? { name: trimmed } : {}) },
+        body: {
+          phone,
+          code,
+          accountDomain: domain,
+          consent: CONSENT,
+          ...(trimmed ? { name: trimmed } : {}),
+        },
       }),
     );
   },
 
-  /** Creates the account and emails a verification link; the user is not signed in until they open it. */
-  register: (name: string, email: string, password: string) =>
+  /** Creates a domain-scoped account and emails a verification link. */
+  register: (name: string, email: string, password: string, accountDomain?: AccountDomain) =>
     request<void>("identity", "/auth/register", {
       method: "POST",
-      body: { name: name.trim(), email: email.trim(), password, consent: CONSENT },
+      body: {
+        name: name.trim(),
+        email: email.trim(),
+        password,
+        accountDomain: accountDomain ?? currentClientDomain(),
+        consent: CONSENT,
+      },
     }),
 
   async verifyEmail(token: string, password: string): Promise<TokenResponse> {
@@ -377,11 +451,19 @@ export const identity = {
 
   verifyPhone: (phone: string, code: string) =>
     request<void>("identity", "/me/phone/verify", { method: "POST", auth: true, body: { phone, code } }),
-  async loginWithPassword(email: string, password: string): Promise<TokenResponse> {
+  async loginWithPassword(
+    email: string,
+    password: string,
+    accountDomain?: AccountDomain,
+  ): Promise<TokenResponse> {
     return storeTokens(
       await request<TokenResponse>("identity", "/auth/login", {
         method: "POST",
-        body: { email: email.trim(), password },
+        body: {
+          email: email.trim(),
+          password,
+          accountDomain: accountDomain ?? currentClientDomain(),
+        },
       }),
     );
   },
@@ -496,6 +578,41 @@ export const catalog = {
         ...(deliveryRadiusMeters !== undefined ? { deliveryRadiusMeters } : {}),
       },
     }),
+  autocompleteAddress: (q: string, lat?: number, lng?: number, signal?: AbortSignal) =>
+    request<{ suggestions: AddressSuggestion[]; provider: string }>("catalog", "/geocode/autocomplete", {
+      query: { q, lat, lng },
+      signal,
+    }),
+  reverseGeocode: (lat: number, lng: number, signal?: AbortSignal) =>
+    request<{ suggestion: AddressSuggestion }>("catalog", "/geocode/reverse", {
+      query: { lat, lng },
+      signal,
+    }),
+  reviews: (restaurantId: string, signal?: AbortSignal) =>
+    request<{ summary: RestaurantRatingSummary; reviews: RestaurantReview[] }>(
+      "catalog",
+      `/restaurants/${encodeURIComponent(restaurantId)}/reviews`,
+      { signal },
+    ),
+  addReview: (
+    restaurantId: string,
+    body: {
+      rating: number;
+      comment: string;
+      tags?: string[];
+      dishNames?: string[];
+      orderId?: string | null;
+    },
+  ) =>
+    request<{ review: RestaurantReview; summary: RestaurantRatingSummary }>(
+      "catalog",
+      `/restaurants/${encodeURIComponent(restaurantId)}/reviews`,
+      {
+        method: "POST",
+        auth: true,
+        body,
+      },
+    ),
 };
 
 // ---------- Orders ----------
@@ -538,6 +655,20 @@ export const orders = {
       auth: true,
       ...(reason?.trim() ? { body: { reason: reason.trim() } } : {}),
     }),
+  taxQuote: (
+    body: {
+      restaurantId: string;
+      lines: { itemId: string; quantity: number }[];
+      customerStateCode?: string;
+    },
+    signal?: AbortSignal,
+  ) =>
+    request<TaxQuoteBreakdown>("orders", "/orders/tax-quote", {
+      method: "POST",
+      auth: true,
+      body,
+      signal,
+    }),
 };
 
 // ---------- Restaurant staff ----------
@@ -567,13 +698,25 @@ export const staffOrders = {
 
 // ---------- Payments ----------
 
+export interface CreatePaymentMeta {
+  method?: PaymentMethodKind;
+  methodLabel?: string;
+  upiVpa?: string;
+  cardLast4?: string;
+  cardNetwork?: string;
+  bankName?: string;
+  gatewayOrderId?: string;
+  signature?: string;
+  simulateDecline?: boolean;
+}
+
 export const payments = {
-  create: (orderId: string, amountPaise: number, idempotencyKey: string) =>
+  create: (orderId: string, amountPaise: number, idempotencyKey: string, meta?: CreatePaymentMeta) =>
     request<Payment>("payments", "/payments", {
       method: "POST",
       auth: true,
       idempotencyKey,
-      body: { orderId, amountPaise },
+      body: { orderId, amountPaise, ...(meta ?? {}) },
     }),
   get: (id: string, signal?: AbortSignal) =>
     request<Payment>("payments", `/payments/${encodeURIComponent(id)}`, {
@@ -613,6 +756,8 @@ export interface AdminUser {
   emailVerified?: boolean;
   hasPassword?: boolean;
   roles: string[];
+  accountDomain?: AccountDomain;
+  customerGroup?: CustomerGroupProfile | null;
   status?: string;
   createdAt?: string;
   main?: boolean;
@@ -636,6 +781,32 @@ export const adminUsers = {
       auth: true,
       body: { role, enabled },
     }),
+  setCustomerGroup: (
+    userId: string,
+    patch: {
+      loyaltyTier?: CustomerLoyaltyTier;
+      dietaryCohort?: CustomerDietaryCohort;
+      assignmentMode?: GroupAssignmentMode;
+    },
+  ) =>
+    request<AdminUser>("identity", `/admin/users/${encodeURIComponent(userId)}/customer-group`, {
+      method: "PATCH",
+      auth: true,
+      body: patch,
+    }),
+  getOrgRules: (signal?: AbortSignal) =>
+    request<OrgCustomerGroupRules>("identity", "/admin/customer-group-rules", { auth: true, signal }),
+  updateOrgRules: (patch: Partial<OrgCustomerGroupRules>) =>
+    request<OrgCustomerGroupRules>("identity", "/admin/customer-group-rules", {
+      method: "PUT",
+      auth: true,
+      body: patch,
+    }),
+};
+
+export const customerGroupsApi = {
+  getRules: (signal?: AbortSignal) =>
+    request<OrgCustomerGroupRules>("identity", "/customer-group-rules", { signal }),
 };
 
 // ---------- Feature flags ----------
@@ -676,6 +847,7 @@ export interface CreateRestaurantPayload {
   deliveryRadiusMeters: number;
   open?: boolean;
   cuisine?: string;
+  imageUrl?: string | null;
 }
 
 export const adminRestaurants = {

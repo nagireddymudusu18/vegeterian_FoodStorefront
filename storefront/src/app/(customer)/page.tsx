@@ -13,26 +13,15 @@ import {
   LocationPicker,
   openLocationPickerModal,
   MapPinSvg,
+  RestaurantCoverAsset,
+  CURATED_CULINARY_ASSETS,
 } from "@/features/catalog";
-import { formatDistance } from "@/lib/money";
 import { Empty, ErrorBox } from "@/components/ui";
 import { RestaurantGridSkeleton } from "@/components/Skeletons";
 import { FadeInItem } from "@/components/motion";
-
-const TINTS = [
-  { bg: "bg-haldi", ink: "text-green-800" },
-  { bg: "bg-green-100", ink: "text-green-800" },
-  { bg: "bg-amber-100", ink: "text-amber-900" },
-];
-
-function tintFor(id: string) {
-  let h = 0;
-  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;
-  return TINTS[h % TINTS.length];
-}
+import { StarRatingDisplay } from "@/features/reviews/RestaurantReviewsSection";
 
 function RestaurantCard({ r, index }: { r: Restaurant; index: number }) {
-  const tint = tintFor(r.id);
   return (
     <FadeInItem index={index}>
       <Link
@@ -41,30 +30,31 @@ function RestaurantCard({ r, index }: { r: Restaurant; index: number }) {
           r.open ? "" : "opacity-75"
         }`}
       >
-        <div className={`relative flex h-32 items-center justify-center overflow-hidden ${tint.bg}`}>
-          <span
-            aria-hidden="true"
-            className="pointer-events-none absolute inset-0"
-            style={{
-              background:
-                "radial-gradient(circle at 85% 15%, rgb(255 255 255 / .55) 0 22%, transparent 23%), radial-gradient(circle at 10% 95%, rgb(255 255 255 / .35) 0 26%, transparent 27%)",
-            }}
-          />
-          <span aria-hidden="true" className={`relative text-6xl font-extrabold tracking-tight opacity-80 ${tint.ink}`}>
-            {r.name.trim().charAt(0).toUpperCase()}
-          </span>
-          <span className="absolute bottom-3 left-3 rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-ink shadow-sm">
-            {formatDistance(r.distanceMeters)}
-          </span>
-        </div>
+        <RestaurantCoverAsset restaurant={r} heightClass="h-44" showDistance />
         <div className="space-y-2 p-4">
           <div className="flex items-start justify-between gap-2">
-            <h3 className="text-base font-bold leading-snug">{r.name}</h3>
+            <h3 className="text-base font-bold leading-snug text-ink transition-colors group-hover:text-green-800">
+              {r.name}
+            </h3>
             <OpenBadge open={r.open} />
           </div>
-          {r.cuisine && <p className="text-sm text-stone-600">{r.cuisine}</p>}
-          <div className="flex flex-wrap gap-1.5">
+          <div className="flex flex-wrap items-center justify-between gap-2 text-sm text-stone-600">
+            {r.cuisine && <span>{r.cuisine}</span>}
+            {r.ratingSummary && (
+              <StarRatingDisplay
+                rating={r.ratingSummary.averageRating}
+                count={r.ratingSummary.reviewCount}
+                size="sm"
+              />
+            )}
+          </div>
+          <div className="flex flex-wrap items-center justify-between gap-1.5">
             <CertBadge level={r.kitchenCertificationLevel} />
+            {r.ratingSummary && r.ratingSummary.topTags.length > 0 && (
+              <span className="truncate text-[11px] font-medium text-stone-500">
+                {r.ratingSummary.topTags[0].tag}
+              </span>
+            )}
           </div>
         </div>
       </Link>
@@ -72,10 +62,15 @@ function RestaurantCard({ r, index }: { r: Restaurant; index: number }) {
   );
 }
 
-type Quick = "open" | "tier1" | "tier2" | "near";
+type Quick = "open" | "top-rated" | "tier1" | "tier2" | "near";
 
 const QUICK: { id: Quick; label: string; test: (r: Restaurant) => boolean }[] = [
   { id: "open", label: "Open now", test: (r) => r.open },
+  {
+    id: "top-rated",
+    label: "4.5★+ Top rated",
+    test: (r) => (r.ratingSummary?.averageRating ?? 0) >= 4.5,
+  },
   { id: "tier1", label: "Exclusive veg kitchens", test: (r) => certificationTier(r.kitchenCertificationLevel) === 1 },
   { id: "tier2", label: "Segregated veg kitchens", test: (r) => certificationTier(r.kitchenCertificationLevel) === 2 },
   { id: "near", label: "Within 3 km", test: (r) => r.distanceMeters !== undefined && r.distanceMeters <= 3000 },
@@ -130,42 +125,66 @@ export default function HomePage() {
   const visible = useMemo(() => {
     const test = QUICK.find((c) => c.id === quick)?.test;
     const byQuick = test ? (items ?? []).filter(test) : (items ?? []);
-    return activeCuisine ? byQuick.filter((r) => r.cuisine === activeCuisine) : byQuick;
+    const filtered = activeCuisine ? byQuick.filter((r) => r.cuisine === activeCuisine) : byQuick;
+    if (quick === "top-rated") {
+      return [...filtered].sort(
+        (a, b) => (b.ratingSummary?.wilsonScore ?? 0) - (a.ratingSummary?.wilsonScore ?? 0),
+      );
+    }
+    return filtered;
   }, [items, quick, activeCuisine]);
 
   return (
     <div className="space-y-8">
       <section
         aria-labelledby="hero-h"
-        className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-green-700 to-green-600 px-5 py-7 text-white shadow-md sm:px-10 sm:py-10"
+        className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-green-800 via-green-700 to-green-600 px-5 py-7 text-white shadow-md sm:px-10 sm:py-10"
       >
-        <span
-          aria-hidden="true"
-          className="pointer-events-none absolute right-5 top-5 h-12 w-12 rounded-full bg-amber-500 sm:-right-8 sm:-top-10 sm:h-44 sm:w-44"
-        />
-        <span
-          aria-hidden="true"
-          className="pointer-events-none absolute -right-16 -top-20 hidden h-64 w-64 rounded-full border-[22px] border-amber-500/20 sm:block"
-        />
-        <p className="relative text-xs font-bold uppercase tracking-[0.16em] text-amber-300 sm:text-sm">Pure veg · Vegan · Jain</p>
-        <h1 id="hero-h" className="relative mt-2 max-w-xl text-4xl font-extrabold leading-[1.05] sm:text-6xl">
-          Veg, on the go.
-        </h1>
-        <p className="relative mt-3 max-w-md text-green-50">
-          Every kitchen is checked for its veg standard, so you can order with confidence.
-        </p>
-        <div className="relative mt-5 max-w-xl">
-          <label htmlFor="search" className="sr-only">
-            Search restaurants
-          </label>
-          <input
-            id="search"
-            type="search"
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            placeholder="Search restaurants or dishes"
-            className="w-full rounded-full border-0 bg-white px-5 py-3.5 text-ink shadow-md placeholder:text-stone-500"
-          />
+        <div className="relative grid items-center gap-6 lg:grid-cols-12">
+          <div className="lg:col-span-7">
+            <p className="text-xs font-bold uppercase tracking-[0.16em] text-amber-300 sm:text-sm">
+              Pure veg · Vegan · Jain
+            </p>
+            <h1 id="hero-h" className="mt-2 max-w-xl text-4xl font-extrabold leading-[1.05] sm:text-6xl">
+              Veg, on the go.
+            </h1>
+            <p className="mt-3 max-w-md text-green-50">
+              Every kitchen is checked for its veg standard, so you can order with confidence.
+            </p>
+            <div className="mt-5 max-w-xl">
+              <label htmlFor="search" className="sr-only">
+                Search restaurants
+              </label>
+              <input
+                id="search"
+                type="search"
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+                placeholder="Search restaurants, masala dosa, tofu tikka, Jain bhaji..."
+                className="w-full rounded-full border-0 bg-white px-5 py-3.5 text-ink shadow-md placeholder:text-stone-500"
+              />
+            </div>
+          </div>
+
+          <div className="hidden lg:col-span-5 lg:grid lg:grid-cols-2 lg:gap-3">
+            {CURATED_CULINARY_ASSETS.slice(0, 2).map((asset) => (
+              <div
+                key={asset.id}
+                className="group relative h-36 overflow-hidden rounded-2xl ring-2 ring-white/25 shadow-md"
+              >
+                <img
+                  src={asset.src}
+                  alt={asset.alt}
+                  referrerPolicy="no-referrer"
+                  className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+                />
+                <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/75 via-black/15 to-transparent" />
+                <span className="absolute bottom-2.5 left-2.5 right-2.5 truncate text-xs font-bold text-white">
+                  {asset.label}
+                </span>
+              </div>
+            ))}
+          </div>
         </div>
       </section>
 
@@ -276,38 +295,28 @@ export default function HomePage() {
         aria-labelledby="how-it-works-h"
         className="rounded-3xl border border-stone-200 bg-white p-5 shadow-2xs sm:p-6"
       >
-        <div className="flex flex-wrap items-end justify-between gap-2 border-b border-stone-100 pb-4">
-          <div>
-            <p className="text-xs font-bold uppercase tracking-[0.14em] text-green-800">
-              How Veggo Eats works
-            </p>
-            <h2 id="how-it-works-h" className="mt-1 text-lg font-extrabold text-ink sm:text-xl">
-              From certified kitchen to your doorstep
-            </h2>
-          </div>
-          <span className="rounded-lg bg-haldi/70 px-2.5 py-1 text-xs font-semibold text-amber-950 ring-1 ring-amber-300/60">
-            FSSAI &amp; Veg-Tier Verified
-          </span>
+        <div className="border-b border-stone-100 pb-4">
+          <p className="text-xs font-bold uppercase tracking-[0.14em] text-green-800">
+            How Veggo Eats works
+          </p>
+          <h2 id="how-it-works-h" className="mt-1 text-lg font-extrabold text-ink sm:text-xl">
+            Order fresh vegetarian meals in minutes
+          </h2>
         </div>
 
         <div className="mt-4 grid gap-4 sm:grid-cols-3">
-          {/* Step 1: Pick your spot */}
+          {/* Pick your spot */}
           <div className="flex flex-col justify-between rounded-2xl border border-stone-200/80 bg-cream/55 p-4 transition hover:border-green-700/40">
             <div>
-              <div className="flex items-center justify-between gap-2">
-                <span
-                  aria-hidden="true"
-                  className="flex h-10 w-10 items-center justify-center rounded-xl bg-green-100 text-green-800 ring-1 ring-green-200"
-                >
-                  <MapPinSvg className="h-5 w-5" />
-                </span>
-                <span className="rounded-md bg-white px-2 py-0.5 font-mono text-[11px] font-bold tracking-wider text-stone-500 ring-1 ring-stone-200">
-                  STEP 01
-                </span>
-              </div>
+              <span
+                aria-hidden="true"
+                className="flex h-10 w-10 items-center justify-center rounded-xl bg-green-100 text-green-800 ring-1 ring-green-200"
+              >
+                <MapPinSvg className="h-5 w-5" />
+              </span>
               <h3 className="mt-3 text-base font-extrabold text-ink">Pick your spot</h3>
               <p className="mt-1 text-sm leading-relaxed text-stone-600">
-                Choose a Bengaluru neighbourhood or drop a pin on the map to see certified kitchens that deliver to your door.
+                Choose your delivery area or drop a pin on the map to see kitchens that deliver to your door.
               </p>
             </div>
             <div className="mt-4 border-t border-stone-200/70 pt-3">
@@ -322,35 +331,30 @@ export default function HomePage() {
             </div>
           </div>
 
-          {/* Step 2: Order as a guest */}
+          {/* Order as a guest */}
           <div className="flex flex-col justify-between rounded-2xl border border-stone-200/80 bg-cream/55 p-4 transition hover:border-green-700/40">
             <div>
-              <div className="flex items-center justify-between gap-2">
-                <span
-                  aria-hidden="true"
-                  className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-100 text-amber-900 ring-1 ring-amber-200"
+              <span
+                aria-hidden="true"
+                className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-100 text-amber-900 ring-1 ring-amber-200"
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  className="h-5 w-5"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
                 >
-                  <svg
-                    viewBox="0 0 24 24"
-                    className="h-5 w-5"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  >
-                    <path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z" />
-                    <path d="M3 6h18" />
-                    <path d="M16 10a4 4 0 0 1-8 0" />
-                  </svg>
-                </span>
-                <span className="rounded-md bg-white px-2 py-0.5 font-mono text-[11px] font-bold tracking-wider text-stone-500 ring-1 ring-stone-200">
-                  STEP 02
-                </span>
-              </div>
+                  <path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z" />
+                  <path d="M3 6h18" />
+                  <path d="M16 10a4 4 0 0 1-8 0" />
+                </svg>
+              </span>
               <h3 className="mt-3 text-base font-extrabold text-ink">Order as a guest</h3>
               <p className="mt-1 text-sm leading-relaxed text-stone-600">
-                No account or password needed. Every dish is checked against your Pure Veg, Vegan, or Jain guardrail before checkout.
+                No account or password needed. Filter menus by Pure Veg, Vegan, or Jain preferences before you check out.
               </p>
             </div>
             <div className="mt-4 border-t border-stone-200/70 pt-3">
@@ -368,35 +372,30 @@ export default function HomePage() {
             </div>
           </div>
 
-          {/* Step 3: Track with your number */}
+          {/* Track with your number */}
           <div className="flex flex-col justify-between rounded-2xl border border-stone-200/80 bg-cream/55 p-4 transition hover:border-green-700/40">
             <div>
-              <div className="flex items-center justify-between gap-2">
-                <span
-                  aria-hidden="true"
-                  className="flex h-10 w-10 items-center justify-center rounded-xl bg-green-100 text-green-800 ring-1 ring-green-200"
+              <span
+                aria-hidden="true"
+                className="flex h-10 w-10 items-center justify-center rounded-xl bg-green-100 text-green-800 ring-1 ring-green-200"
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  className="h-5 w-5"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
                 >
-                  <svg
-                    viewBox="0 0 24 24"
-                    className="h-5 w-5"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  >
-                    <circle cx="11" cy="11" r="8" />
-                    <path d="m21 21-4.3-4.3" />
-                    <path d="M8 11h6M11 8v6" />
-                  </svg>
-                </span>
-                <span className="rounded-md bg-white px-2 py-0.5 font-mono text-[11px] font-bold tracking-wider text-stone-500 ring-1 ring-stone-200">
-                  STEP 03
-                </span>
-              </div>
+                  <circle cx="11" cy="11" r="8" />
+                  <path d="m21 21-4.3-4.3" />
+                  <path d="M8 11h6M11 8v6" />
+                </svg>
+              </span>
               <h3 className="mt-3 text-base font-extrabold text-ink">Track with your number</h3>
               <p className="mt-1 text-sm leading-relaxed text-stone-600">
-                Follow live kitchen prep and delivery status any time using your Crockford order code (e.g. FA-XXXXX-XXXXX).
+                Follow live kitchen prep and delivery status any time using your order number (e.g. FA-XXXXX-XXXXX).
               </p>
             </div>
             <div className="mt-4 border-t border-stone-200/70 pt-3">

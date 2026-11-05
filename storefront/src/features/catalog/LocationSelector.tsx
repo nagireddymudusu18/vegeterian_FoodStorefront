@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, type FormEvent, type MouseEvent } from "react";
 import { Dialog as DialogPrimitive } from "radix-ui";
 import { toast } from "sonner";
+import { catalog, type AddressSuggestion } from "@/lib/api";
 import { usePrefs, type Location } from "./prefs-context";
 import {
   BENGALURU_MAP_BOUNDS,
@@ -149,6 +150,8 @@ export function LocationSelectorDialog({
   const [lngInput, setLngInput] = useState(() => String(location.lng));
   const [customLabel, setCustomLabel] = useState(() => location.label);
   const [coordErr, setCoordErr] = useState<string | null>(null);
+  const [suggestions, setSuggestions] = useState<AddressSuggestion[]>([]);
+  const [suggestionsBusy, setSuggestionsBusy] = useState(false);
   const mapRef = useRef<HTMLDivElement>(null);
 
   const { geoBusy, geoErr, triggerGps } = useGeolocationTrigger((loc) => {
@@ -159,6 +162,27 @@ export function LocationSelectorDialog({
     setLocation(loc);
     onOpenChange(false);
   });
+
+  useEffect(() => {
+    if (!open) return;
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => {
+      setSuggestionsBusy(true);
+      catalog
+        .autocompleteAddress(search, draft.lat, draft.lng, ctrl.signal)
+        .then((res) => {
+          setSuggestions(Array.isArray(res?.suggestions) ? res.suggestions : []);
+          setSuggestionsBusy(false);
+        })
+        .catch(() => {
+          setSuggestionsBusy(false);
+        });
+    }, 180);
+    return () => {
+      clearTimeout(timer);
+      ctrl.abort();
+    };
+  }, [open, search, draft.lat, draft.lng]);
 
   function syncDraft(next: Location) {
     setDraft(next);
@@ -183,6 +207,15 @@ export function LocationSelectorDialog({
     });
   }
 
+  function handleSelectSuggestion(s: AddressSuggestion) {
+    const label = s.pincode ? `${s.title} (${s.pincode})` : `${s.title}, ${s.locality}`;
+    applyAndClose({
+      lat: s.lat,
+      lng: s.lng,
+      label,
+    });
+  }
+
   function handleMapClick(e: MouseEvent<HTMLDivElement>) {
     const el = mapRef.current;
     if (!el) return;
@@ -197,6 +230,19 @@ export function LocationSelectorDialog({
       lng,
       label: nearest.suggestedLabel,
     });
+    catalog
+      .reverseGeocode(lat, lng)
+      .then((rev) => {
+        const s = rev?.suggestion;
+        if (s && s.title) {
+          syncDraft({
+            lat,
+            lng,
+            label: s.pincode ? `${s.title} (${s.pincode})` : s.title,
+          });
+        }
+      })
+      .catch(() => undefined);
   }
 
   function handleCustomSubmit(e: FormEvent) {
@@ -245,7 +291,7 @@ export function LocationSelectorDialog({
                 Choose your delivery spot
               </DialogPrimitive.Title>
               <DialogPrimitive.Description id="loc-dialog-desc" className="text-xs text-stone-600 sm:text-sm">
-                Tap any Bengaluru neighbourhood, click on the interactive map, or use GPS.
+                Search street, apartment society, or PIN code (powered by OpenStreetMap Photon), or tap the map.
               </DialogPrimitive.Description>
             </div>
             <DialogPrimitive.Close
@@ -264,14 +310,14 @@ export function LocationSelectorDialog({
             <div className="flex flex-col gap-2.5 sm:flex-row">
               <div className="relative flex-1">
                 <label htmlFor="loc-search-input" className="sr-only">
-                  Search neighbourhood, landmark, pincode or paste coordinates
+                  Search street, apartment society, landmark, pincode or paste coordinates
                 </label>
                 <input
                   id="loc-search-input"
                   type="search"
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Search Indiranagar, 560001, Lalbagh, or 12.97, 77.59..."
+                  placeholder="Search 100 Feet Road, Prestige Shantiniketan, 560038, or 12.97, 77.59..."
                   className="w-full rounded-xl border border-stone-300 bg-white px-3.5 py-2.5 text-sm text-ink placeholder:text-stone-400"
                 />
               </div>
@@ -319,13 +365,60 @@ export function LocationSelectorDialog({
               </div>
             )}
 
+            {/* Street, Society & Landmark Autocomplete Suggestions */}
+            {suggestions.length > 0 && (
+              <div className="space-y-2 rounded-2xl border border-stone-200 bg-white p-3.5 shadow-2xs">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-green-800">
+                    {search.trim()
+                      ? "Matching street & society addresses"
+                      : "Suggested street & society addresses near you"}
+                  </span>
+                  <span className="text-[11px] text-stone-500">
+                    {suggestionsBusy ? "Searching OpenStreetMap..." : `${suggestions.length} suggestions`}
+                  </span>
+                </div>
+                <ul className="divide-y divide-stone-100">
+                  {suggestions.slice(0, search.trim() ? 6 : 4).map((s) => (
+                    <li key={s.id}>
+                      <button
+                        type="button"
+                        onClick={() => handleSelectSuggestion(s)}
+                        className="flex w-full items-start justify-between gap-3 rounded-xl px-2.5 py-2 text-left transition hover:bg-green-50/70"
+                      >
+                        <div className="flex min-w-0 items-start gap-2.5">
+                          <MapPinSvg className="mt-0.5 h-4 w-4 shrink-0 text-green-700" />
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-bold text-ink">{s.title}</p>
+                            <p className="truncate text-xs text-stone-600">{s.subtitle}</p>
+                          </div>
+                        </div>
+                        <div className="shrink-0 text-right">
+                          {s.pincode && (
+                            <span className="block font-mono text-[11px] font-semibold text-stone-700">
+                              PIN {s.pincode}
+                            </span>
+                          )}
+                          {s.distanceKm !== undefined && (
+                            <span className="block text-[11px] text-stone-500">
+                              {formatDistanceKm(s.distanceKm)}
+                            </span>
+                          )}
+                        </div>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
             {/* Interactive Map Pad */}
             <div className="overflow-hidden rounded-2xl border border-stone-300 bg-white shadow-sm">
               <div className="flex flex-wrap items-center justify-between gap-2 border-b border-stone-200 bg-stone-50 px-4 py-2.5">
                 <div className="flex items-center gap-2">
                   <span className="inline-block h-2.5 w-2.5 rounded-full bg-green-700" aria-hidden="true" />
                   <span className="text-xs font-bold uppercase tracking-wider text-stone-700">
-                    Interactive Bengaluru Map — Tap anywhere to move pin
+                    Interactive Delivery Map — Tap anywhere to move pin
                   </span>
                 </div>
                 <span
@@ -474,7 +567,7 @@ export function LocationSelectorDialog({
             <div className="space-y-2.5">
               <div className="flex items-center justify-between">
                 <h3 className="text-xs font-bold uppercase tracking-wider text-stone-600">
-                  Popular Bengaluru neighbourhoods
+                  Popular delivery areas
                 </h3>
                 <span className="text-xs text-stone-500">{filteredPresets.length} areas</span>
               </div>

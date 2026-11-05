@@ -59,7 +59,6 @@ test("JWT roles, order pricing, payment capture, notifications, auto-refund, and
   const tokens = verifyOtpLogin("+919876543210", "123456", "Aarav");
   const roles = rolesFromAccessToken(tokens.accessToken);
   assert.ok(roles.includes("CUSTOMER"));
-  assert.ok(roles.includes("ADMIN"));
 
   const order = createOrderForUser(
     "usr_test",
@@ -289,7 +288,7 @@ test("Phase 4: cancelOrderByCustomer records cancellationReason and setAdminUser
   assert.ok(cancelled.timeline.some((e) => e.status === "CANCELLED" && e.reason === "Changed my mind"));
 
   const users = listAdminUsers();
-  assert.equal(users.length, 4);
+  assert.equal(users.length, 6);
 
   const rohan = users.find((u) => u.name === "Rohan Mehta");
   assert.ok(rohan);
@@ -309,6 +308,92 @@ test("Phase 4: cancelOrderByCustomer records cancellationReason and setAdminUser
   assert.ok(rootLock.packages?.["storefront"]);
   assert.ok(rootLock.packages?.["node_modules/storefront"]);
 });
+
+test("Phase 5: domain-isolated partner signup, org-managed customer groups, VIP free delivery, and dietary cohort guardrails", async () => {
+  resetBackendState();
+  const {
+    listAdminUsers,
+    registerEmailUser,
+    requireUser,
+    setAdminUserCustomerGroup,
+    toMe,
+    updateOrgCustomerGroupRules,
+    verifyOtpLogin,
+  } = await import("./mock-backend");
+
+  // 1. Existing CUSTOMER (rohan.mehta@example.com / +919811100004) can sign up independently on RESTAURANT_OWNER
+  // and DELIVERY_PARTNER domains without combining or mutating the CUSTOMER account.
+  const restReg = registerEmailUser(
+    "Rohan Kitchen Ventures",
+    "rohan.mehta@example.com",
+    "KitchenPass123",
+    "RESTAURANT_OWNER",
+  );
+  const restMe = toMe(restReg.user);
+  assert.equal(restMe.accountDomain, "RESTAURANT_OWNER");
+  assert.deepEqual(restMe.roles, ["RESTAURANT"]);
+  assert.equal(restMe.customerGroup, null);
+
+  const partnerTokens = verifyOtpLogin("+919811100004", "123456", "Rohan Rider", "DELIVERY_PARTNER");
+  const partnerMe = toMe(requireUser(`Bearer ${partnerTokens.accessToken}`));
+  assert.equal(partnerMe.accountDomain, "DELIVERY_PARTNER");
+  assert.deepEqual(partnerMe.roles, ["PARTNER"]);
+
+  const allUsers = listAdminUsers();
+  const customerRohan = allUsers.find((u) => u.id === "00000000-0000-0000-0000-000000000004");
+  assert.ok(customerRohan);
+  assert.equal(customerRohan.accountDomain, "CUSTOMER");
+  assert.deepEqual(customerRohan.roles, ["CUSTOMER"]);
+  assert.notEqual(restMe.id, customerRohan.id);
+  assert.notEqual(partnerMe.id, customerRohan.id);
+
+  // 2. VIP customer (00000000-0000-0000-0000-000000000001) gets 5% loyalty discount and ₹0 FREE delivery
+  const vipOrder = createOrderForUser(
+    "00000000-0000-0000-0000-000000000001",
+    "rest-saffron-1",
+    [{ itemId: "item-saffron-1", quantity: 2 }], // 49800 paise
+    "idem-vip-1",
+  );
+  assert.equal(vipOrder.subtotalPaise, 49800);
+  assert.equal(vipOrder.discountPercent, 5);
+  assert.equal(vipOrder.discountPaise, 2490);
+  assert.equal(vipOrder.deliveryFeePaise, 0);
+
+  // 3. STRICT_JAIN cohort customer (00000000-0000-0000-0000-000000000005) is blocked from ordering non-Jain items or Tier-2 kitchens
+  assert.throws(
+    () =>
+      createOrderForUser(
+        "00000000-0000-0000-0000-000000000005",
+        "rest-saffron-1",
+        [{ itemId: "item-saffron-1", quantity: 1 }], // Paneer Butter Masala is not Jain
+        "idem-jain-fail",
+      ),
+    /Cohort guardrail/,
+  );
+
+  // Valid Jain item from Tier-1 kitchen succeeds for STRICT_JAIN cohort
+  const jainOrder = createOrderForUser(
+    "00000000-0000-0000-0000-000000000005",
+    "rest-jain-3",
+    [{ itemId: "item-jain-1", quantity: 1 }], // Jain Pav Bhaji
+    "idem-jain-ok",
+  );
+  assert.equal(jainOrder.status, "CREATED");
+
+  // 4. Admin can pin a customer's group and update org customer group rules
+  const updatedGroup = setAdminUserCustomerGroup("00000000-0000-0000-0000-000000000004", {
+    loyaltyTier: "VIP",
+    dietaryCohort: "VEGAN",
+    assignmentMode: "ADMIN_PINNED",
+  });
+  assert.equal(updatedGroup.customerGroup?.loyaltyTier, "VIP");
+  assert.equal(updatedGroup.customerGroup?.dietaryCohort, "VEGAN");
+  assert.equal(updatedGroup.customerGroup?.assignmentMode, "ADMIN_PINNED");
+
+  const updatedRules = updateOrgCustomerGroupRules({ vipDiscountPercent: 8 });
+  assert.equal(updatedRules.vipDiscountPercent, 8);
+});
+
 
 
 

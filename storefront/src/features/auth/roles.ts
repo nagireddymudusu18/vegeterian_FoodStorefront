@@ -1,4 +1,5 @@
 import { safeInternalPath } from "./redirect";
+import { isValidAccountDomain, resolveAccountDomain, type AccountDomain } from "../customer-groups/rules";
 
 export type PortalScope = "customer" | "admin" | "restaurant" | "partner";
 
@@ -13,6 +14,20 @@ export function resolvePortalScope(pathname: string | null | undefined): PortalS
   if (RESTAURANT_PATH_RE.test(pathname)) return "restaurant";
   if (PARTNER_PATH_RE.test(pathname)) return "partner";
   return "customer";
+}
+
+/** Maps a portal scope (plus optional hostname) to its isolated AccountDomain flag. */
+export function scopeToAccountDomain(scope: PortalScope, hostname?: string | null): AccountDomain {
+  switch (scope) {
+    case "admin":
+      return "ADMIN";
+    case "restaurant":
+      return "RESTAURANT_OWNER";
+    case "partner":
+      return "DELIVERY_PARTNER";
+    default:
+      return resolveAccountDomain({ hostname, pathname: "/" });
+  }
 }
 
 /** Returns the dedicated sign-in route for a portal scope. */
@@ -47,6 +62,20 @@ export function rolesFromAccessToken(token: string | null | undefined): string[]
   }
 }
 
+/** Extracts the accountDomain claim from a JWT access token if present. */
+export function accountDomainFromAccessToken(token: string | null | undefined): AccountDomain | null {
+  const payload = token?.split(".")[1];
+  if (!payload) return null;
+  try {
+    const b64 = payload.replace(/-/g, "+").replace(/_/g, "/");
+    const json = atob(b64.padEnd(b64.length + ((4 - (b64.length % 4)) % 4), "="));
+    const claims = JSON.parse(json) as { accountDomain?: unknown };
+    return isValidAccountDomain(claims.accountDomain) ? claims.accountDomain : null;
+  } catch {
+    return null;
+  }
+}
+
 /** Only same-site /admin paths are allowed as a post-login destination. */
 export function safeAdminNext(next: string | null | undefined): string {
   const path = safeInternalPath(next, "/admin");
@@ -64,5 +93,3 @@ export function safePartnerNext(next: string | null | undefined): string {
   const path = safeInternalPath(next, "/partner");
   return PARTNER_PATH_RE.test(path) && !path.startsWith("/partner/login") ? path : "/partner";
 }
-
-

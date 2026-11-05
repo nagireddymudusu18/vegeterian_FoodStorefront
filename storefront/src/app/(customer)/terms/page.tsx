@@ -7,7 +7,7 @@ export default function TermsPage() {
   return (
     <article className="mx-auto max-w-3xl space-y-4 text-stone-800">
       <h1 className="page-title">Terms of service</h1>
-      <p className="text-sm text-stone-500">Last updated: {BRAND.updated}. Draft: have it reviewed by a lawyer before launch.</p>
+      <p className="text-sm text-stone-500">Last updated: {BRAND.updated}</p>
       <p>
         {BRAND.name} is operated by {BRAND.legalName}, {BRAND.address}. By using the site you accept these terms.
       </p>
@@ -18,8 +18,8 @@ export default function TermsPage() {
       </p>
       <h2 className="text-lg font-bold">Orders and prices</h2>
       <p>
-        Prices include applicable taxes and are calculated by our servers at checkout. An order is confirmed when
-        payment succeeds and the restaurant accepts it.
+        Menu prices and applicable GST and delivery charges are shown clearly at checkout before you pay. An order is
+        confirmed when payment succeeds and the restaurant accepts it.
       </p>
       <h2 className="text-lg font-bold">Your account</h2>
       <p>
