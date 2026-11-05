@@ -1,0 +1,2 @@
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS delivery_address VARCHAR(200);
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS cooking_instructions VARCHAR(200);

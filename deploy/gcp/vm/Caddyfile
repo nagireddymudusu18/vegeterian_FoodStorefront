@@ -7,14 +7,20 @@
 {$DOMAIN} {
 	encode zstd gzip
 
+	# Reject oversized request payloads at the TLS edge before they reach the 256 MB heap services.
+	request_body {
+		max_size 1MB
+	}
+
 	header {
 		Strict-Transport-Security "max-age=31536000"
 		X-Content-Type-Options "nosniff"
 		X-Frame-Options "DENY"
 		Referrer-Policy "strict-origin-when-cross-origin"
 		Permissions-Policy "camera=(), microphone=(), payment=(), geolocation=(self)"
-		# Everything is same-origin (the APIs live under /api). Next.js needs inline scripts and styles. When Razorpay
-		# Checkout is switched on, add https://checkout.razorpay.com to script-src and frame-src, and https://api.razorpay.com to connect-src.
+		# Everything is same-origin (the APIs live under /api). Next.js needs inline scripts and styles.
+		# When Razorpay Checkout (GATEWAY=razorpay) is switched on, swap in the Razorpay CSP line below:
+		# Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' https://checkout.razorpay.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self' https://api.razorpay.com https://lumberjack.razorpay.com; frame-src https://api.razorpay.com https://checkout.razorpay.com; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
 		Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
 		-Server
 	}
@@ -50,6 +56,9 @@
 		reverse_proxy 127.0.0.1:8086
 	}
 	handle /webhooks/razorpay {
+		request_body {
+			max_size 256KB
+		}
 		reverse_proxy 127.0.0.1:8084
 	}
 	handle {

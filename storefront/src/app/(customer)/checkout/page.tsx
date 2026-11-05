@@ -3,8 +3,10 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
 import { errorMessage, orders, payments, type Order } from "@/lib/api";
-import { estimatedSubtotalPaise, toOrderLines, type Cart, useCart } from "@/features/cart";
+import { cartAllergens, cartDietConflicts, estimatedSubtotalPaise, toOrderLines, type Cart, useCart } from "@/features/cart";
+import { dietLabel, openLocationPickerModal, usePrefs } from "@/features/catalog";
 import { formatPaise } from "@/lib/money";
 import { OtpLogin, useAuth } from "@/features/auth";
 import { useFlag } from "@/features/flags";
@@ -50,6 +52,13 @@ function isPaymentFailure(status: string | undefined): boolean {
   return !!status && /FAIL|DECLIN|ERROR|REJECT/i.test(status);
 }
 
+const COOKING_PRESETS = [
+  "Jain prep: no onion or garlic",
+  "Less spicy",
+  "No green chillies",
+  "Don't send disposable cutlery",
+];
+
 type Phase = "idle" | "creating" | "paying" | "payment-failed";
 
 export default function CheckoutPage() {
@@ -57,11 +66,19 @@ export default function CheckoutPage() {
   const auth = useAuth();
   const guestAllowed = useFlag("guest_checkout");
   const { ready, cart, clear } = useCart();
+  const { diet, location, setLocation, savedAddresses } = usePrefs();
   const [phase, setPhase] = useState<Phase>("idle");
   const [error, setError] = useState<unknown>(null);
   const [placed, setPlaced] = useState<Order | null>(null);
+  const [deliveryNotes, setDeliveryNotes] = useState("");
+  const [cookingInstructions, setCookingInstructions] = useState("");
   const attempt = useRef<Attempt | null>(null);
   const busy = useRef(false);
+
+  // Match active saved address if coordinates match
+  const activeSavedAddr = savedAddresses.find(
+    (a) => Math.abs(a.lat - location.lat) < 0.0005 && Math.abs(a.lng - location.lng) < 0.0005,
+  );
 
   useEffect(() => {
     if (ready && cart.lines.length > 0) attempt.current = loadAttempt(signature(cart));
@@ -80,6 +97,13 @@ export default function CheckoutPage() {
     );
   }
   const restaurantId = cart.restaurantId;
+
+  const formattedDeliveryAddress = (() => {
+    const base = activeSavedAddr
+      ? `${activeSavedAddr.label}: ${activeSavedAddr.building}${activeSavedAddr.landmark ? ` (${activeSavedAddr.landmark})` : ""}, ${activeSavedAddr.areaLabel}`
+      : location.label;
+    return deliveryNotes.trim() ? `${base} — ${deliveryNotes.trim()}` : base;
+  })().slice(0, 200);
 
   const pay = async (a: Attempt) => {
     if (!a.order) return;
@@ -113,7 +137,10 @@ export default function CheckoutPage() {
       if (!a.order) {
         setPhase("creating");
         try {
-          const o = await orders.create(restaurantId, toOrderLines(cart), a.orderKey);
+          const o = await orders.create(restaurantId, toOrderLines(cart), a.orderKey, {
+            deliveryAddress: formattedDeliveryAddress,
+            cookingInstructions: cookingInstructions.trim() || undefined,
+          });
           setPlaced(o);
           a.order = { id: o.id, totalPaise: o.totalPaise };
           saveAttempt(a);
@@ -150,9 +177,23 @@ export default function CheckoutPage() {
     setPhase("idle");
   };
 
+  const toggleCookingPreset = (preset: string) => {
+    setCookingInstructions((cur) => {
+      if (cur.includes(preset)) {
+        return cur
+          .split(" · ")
+          .filter((p) => p !== preset)
+          .join(" · ");
+      }
+      return cur ? `${cur} · ${preset}`.slice(0, 200) : preset;
+    });
+  };
+
   const guest = auth.status !== "authed";
   const working = phase === "creating" || phase === "paying";
   const total = attempt.current?.order?.totalPaise ?? placed?.totalPaise;
+  const conflicts = cartDietConflicts(cart, diet);
+  const allergens = cartAllergens(cart);
 
   return (
     <div className="space-y-5">
@@ -163,22 +204,154 @@ export default function CheckoutPage() {
         </p>
       </div>
 
+      {conflicts.length > 0 && (
+        <div
+          role="status"
+          className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900"
+        >
+          <span>
+            <strong>Dietary check:</strong> {conflicts.map((c) => c.name).join(", ")}{" "}
+            {conflicts.some((c) => c.isPureVeg === false)
+              ? "includes non-vegetarian ingredients."
+              : `does not match your ${dietLabel(diet)} filter.`}
+          </span>
+          <Link href="/cart" className="shrink-0 font-semibold text-green-800 underline">
+            Edit cart
+          </Link>
+        </div>
+      )}
+
+      {/* Delivery Spot & Saved Address Selector */}
+      <section className="card space-y-3 p-4" aria-labelledby="chk-addr-h">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <h2 id="chk-addr-h" className="text-sm font-bold text-stone-900">
+              Delivering to
+            </h2>
+            <p className="text-sm font-semibold text-[#1B5E3A]">{formattedDeliveryAddress}</p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => openLocationPickerModal()}
+              className="rounded-lg border border-stone-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-stone-800 hover:bg-stone-100"
+            >
+              Change map pin
+            </button>
+            <Link
+              href="/profile"
+              className="rounded-lg border border-[#1B5E3A]/30 bg-[#1B5E3A]/5 px-2.5 py-1.5 text-xs font-bold text-[#1B5E3A] hover:bg-[#1B5E3A]/10"
+            >
+              Manage saved addresses
+            </Link>
+          </div>
+        </div>
+
+        {savedAddresses.length > 0 && (
+          <div className="flex flex-wrap gap-2 pt-1" role="group" aria-label="Saved addresses">
+            {savedAddresses.map((addr) => {
+              const active = activeSavedAddr?.id === addr.id;
+              return (
+                <button
+                  key={addr.id}
+                  type="button"
+                  onClick={() => {
+                    setLocation({
+                      lat: addr.lat,
+                      lng: addr.lng,
+                      label: `${addr.label} · ${addr.areaLabel}`,
+                    });
+                    toast.success(`Delivering to ${addr.label}`);
+                  }}
+                  className={`rounded-xl border px-3 py-1.5 text-left text-xs transition ${
+                    active
+                      ? "border-[#1B5E3A] bg-[#1B5E3A] font-bold text-white"
+                      : "border-stone-300 bg-stone-50 font-medium text-stone-800 hover:bg-stone-100"
+                  }`}
+                >
+                  <span className="font-bold">{addr.label}:</span> {addr.building}
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        <input
+          type="text"
+          maxLength={120}
+          value={deliveryNotes}
+          onChange={(e) => setDeliveryNotes(e.target.value)}
+          placeholder="Door / flat number, floor, or gate drop instructions (optional)"
+          aria-label="Door, flat, or delivery drop instructions"
+          className="w-full rounded-xl border border-stone-300 bg-white px-3 py-2 text-sm"
+        />
+      </section>
+
+      {/* Kitchen Cooking & Dietary Instructions */}
+      <section className="card space-y-3 p-4" aria-labelledby="chk-notes-h">
+        <div>
+          <h2 id="chk-notes-h" className="text-sm font-bold text-stone-900">
+            Cooking &amp; dietary instructions for the kitchen
+          </h2>
+          <p className="text-xs text-stone-600">
+            Shared directly on the kitchen preparation ticket.
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-1.5" role="group" aria-label="Quick cooking instructions">
+          {COOKING_PRESETS.map((preset) => {
+            const active = cookingInstructions.includes(preset);
+            return (
+              <button
+                key={preset}
+                type="button"
+                aria-pressed={active}
+                onClick={() => toggleCookingPreset(preset)}
+                className={`rounded-full border px-3 py-1 text-xs font-semibold transition ${
+                  active
+                    ? "border-[#1B5E3A] bg-[#1B5E3A] text-white"
+                    : "border-stone-300 bg-white text-stone-700 hover:bg-stone-100"
+                }`}
+              >
+                {active ? `✓ ${preset}` : `+ ${preset}`}
+              </button>
+            );
+          })}
+        </div>
+        <input
+          type="text"
+          maxLength={200}
+          value={cookingInstructions}
+          onChange={(e) => setCookingInstructions(e.target.value)}
+          placeholder="E.g. Jain preparation, no ginger/garlic, pack chutney separately"
+          aria-label="Cooking instructions for the kitchen"
+          className="w-full rounded-xl border border-stone-300 bg-white px-3 py-2 text-sm"
+        />
+      </section>
+
       <div className="card overflow-hidden">
         <ul className="divide-y divide-stone-200">
           {cart.lines.map((l) => (
             <li key={l.itemId} className="flex justify-between gap-3 p-4 text-sm">
               <span>
                 <span className="font-bold">{l.quantity} x</span> {l.name}
+                {l.isPureVeg === false && (
+                  <span className="ml-2 rounded bg-red-100 px-1.5 py-0.5 text-xs font-semibold text-red-800">Non-veg</span>
+                )}
               </span>
               <span className="font-semibold">{formatPaise(l.pricePaise * l.quantity)}</span>
             </li>
           ))}
         </ul>
-        <div className="space-y-1 border-t border-stone-200 bg-stone-50 p-4 text-sm">
+        <div className="space-y-2 border-t border-stone-200 bg-stone-50 p-4 text-sm">
           <div className="flex justify-between font-semibold">
             <span>Estimated subtotal</span>
             <span>{formatPaise(estimatedSubtotalPaise(cart))}</span>
           </div>
+          {allergens.length > 0 && (
+            <p className="text-xs text-amber-900">
+              Allergens in order: <strong>{allergens.join(", ")}</strong>
+            </p>
+          )}
           {total !== undefined ? (
             <div className="flex justify-between text-base font-bold">
               <span>Total confirmed by server</span>
@@ -186,7 +359,7 @@ export default function CheckoutPage() {
             </div>
           ) : (
             <p className="text-stone-600">
-              The final total (including tax and delivery) is calculated by the server when you place the order.
+              The final total (including 5% GST and ₹30 delivery fee) is calculated by the server when you place the order.
             </p>
           )}
         </div>

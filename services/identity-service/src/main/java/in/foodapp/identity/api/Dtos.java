@@ -69,6 +69,9 @@ public final class Dtos {
                              boolean hasPassword, List<String> roles, String status, Instant createdAt) {
     }
 
+    public record UpdateProfileRequest(@NotBlank @Size(max = 80) String name) {
+    }
+
     public record Accepted(String message) {
     }
 

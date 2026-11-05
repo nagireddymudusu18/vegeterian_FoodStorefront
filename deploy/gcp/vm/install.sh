@@ -8,6 +8,7 @@ NODE_VERSION=22.11.0
 CADDY_VERSION=2.8.4
 PROXY_VERSION=2.14.1
 INSTANCE=veggo-eats-6110:asia-south1:veggo-sandbox-db
+READY_FLAG=/run/veggo-ready
 log() { echo "veggo-install: $*"; }
 need() { "$@" || { log "FAILED: $*"; exit 1; }; }
 
@@ -39,19 +40,35 @@ if [ ! -x /usr/local/bin/cloud-sql-proxy ]; then
 fi
 id caddy >/dev/null 2>&1 || useradd --system --home-dir /var/lib/caddy --create-home --shell /usr/sbin/nologin caddy
 
-log "downloading artifacts"
-need fetch app.env $V/app.env
-for f in identity catalog order payment fleet notification; do need fetch "jars/$f.jar" "$V/jars/$f.jar"; done
-need fetch storefront.tar.gz /tmp/storefront.tar.gz
-need fetch vm/run-service.sh $V/bin/run-service.sh
-need fetch vm/Caddyfile $V/Caddyfile
-need fetch scripts/smoke.mjs $V/deploy/scripts/smoke.mjs
+# Finding 11 fix: clear the boot readiness flag and stop any running units before replacing app.env and jars
+# so stale systemd units never crash-loop against half-written or outdated secrets/jars during boot.
+rm -f "$READY_FLAG"
+for s in identity catalog order payment fleet notification; do
+  systemctl stop "veggo@$s" 2>/dev/null || true
+done
+systemctl stop veggo-storefront 2>/dev/null || true
 
-systemctl stop veggo-storefront 2>/dev/null
+log "downloading artifacts (staged atomically)"
+need fetch app.env "$V/app.env.tmp"
+chmod 600 "$V/app.env.tmp"
+chown veggo:veggo "$V/app.env.tmp"
+mv -f "$V/app.env.tmp" "$V/app.env"
+
+for f in identity catalog order payment fleet notification; do
+  need fetch "jars/$f.jar" "$V/jars/$f.jar.tmp"
+  chown veggo:veggo "$V/jars/$f.jar.tmp"
+  mv -f "$V/jars/$f.jar.tmp" "$V/jars/$f.jar"
+done
+need fetch storefront.tar.gz /tmp/storefront.tar.gz
+need fetch vm/run-service.sh "$V/bin/run-service.sh.tmp"
+chmod 700 "$V/bin/run-service.sh.tmp"
+chown veggo:veggo "$V/bin/run-service.sh.tmp"
+mv -f "$V/bin/run-service.sh.tmp" "$V/bin/run-service.sh"
+need fetch vm/Caddyfile "$V/Caddyfile"
+need fetch scripts/smoke.mjs "$V/deploy/scripts/smoke.mjs"
+
 rm -rf $V/storefront && mkdir -p $V/storefront
 need tar -xzf /tmp/storefront.tar.gz -C $V/storefront
-chmod 700 $V/bin/run-service.sh
-chmod 600 $V/app.env
 chown -R veggo:veggo $V/jars $V/storefront $V/bin $V/app.env $V/deploy
 
 # Caddy only needs the host name and the ACME contact, not the service secrets.
@@ -74,11 +91,14 @@ RestartSec=3
 WantedBy=multi-user.target
 EOF
 
+# ConditionPathExists=/run/veggo-ready prevents systemd from launching stale service instances on reboot
+# before install.sh has finished replacing app.env, jars and starting veggo-proxy.
 cat > /etc/systemd/system/veggo@.service <<'EOF'
 [Unit]
 Description=Veggo %i-service
 After=veggo-proxy.service
 Wants=veggo-proxy.service
+ConditionPathExists=/run/veggo-ready
 [Service]
 User=veggo
 ExecStart=/opt/veggo/bin/run-service.sh %i
@@ -94,6 +114,7 @@ cat > /etc/systemd/system/veggo-storefront.service <<'EOF'
 [Unit]
 Description=Veggo storefront
 After=network-online.target
+ConditionPathExists=/run/veggo-ready
 [Service]
 User=veggo
 WorkingDirectory=/opt/veggo/storefront
@@ -159,7 +180,17 @@ fi
 systemctl daemon-reload
 systemctl enable veggo-proxy veggo-storefront veggo-caddy veggo@identity veggo@catalog veggo@order veggo@payment veggo@fleet veggo@notification >/dev/null 2>&1
 systemctl restart veggo-proxy
-sleep 3
+
+log "waiting for Cloud SQL Auth Proxy on 127.0.0.1:5432"
+for i in $(seq 1 30); do
+  if (echo > /dev/tcp/127.0.0.1/5432) >/dev/null 2>&1; then
+    log "Cloud SQL Auth Proxy listening (attempt $i)"
+    break
+  fi
+  sleep 1
+done
+
+touch "$READY_FLAG"
 for s in identity catalog order payment fleet notification; do systemctl restart veggo@$s; done
 systemctl restart veggo-storefront veggo-caddy
 log "units started; waiting for services"

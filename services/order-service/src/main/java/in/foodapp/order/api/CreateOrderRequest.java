@@ -17,7 +17,13 @@ import java.util.UUID;
 @JsonIgnoreProperties(ignoreUnknown = true)
 public record CreateOrderRequest(
         @NotNull UUID restaurantId,
-        @NotEmpty @Size(max = 50) List<@Valid @NotNull Line> lines) {
+        @NotEmpty @Size(max = 50) List<@Valid @NotNull Line> lines,
+        @Size(max = 200) String deliveryAddress,
+        @Size(max = 200) String cookingInstructions) {
+
+    public CreateOrderRequest(UUID restaurantId, List<Line> lines) {
+        this(restaurantId, lines, null, null);
+    }
 
     @JsonIgnoreProperties(ignoreUnknown = true)
     public record Line(

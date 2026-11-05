@@ -49,7 +49,7 @@ class DbActionsTest {
     }
 
     @Test
-    void poolKeepsNoStandingConnectionsConfigured() {
-        assertThat(((HikariDataSource) ds).getMinimumIdle()).isZero();
+    void poolKeepsOneWarmStandingConnectionConfigured() {
+        assertThat(((HikariDataSource) ds).getMinimumIdle()).isEqualTo(1);
     }
 }

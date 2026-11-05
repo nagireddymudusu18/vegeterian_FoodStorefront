@@ -1,0 +1,7 @@
+{
+  "name": "FoodApp: Order Veg, Vegan and Jain Food",
+  "description": "Diet-first food delivery marketplace with certified Pure Veg, Vegan, and Jain kitchens.",
+  "requestFramePermissions": [
+    "geolocation"
+  ]
+}

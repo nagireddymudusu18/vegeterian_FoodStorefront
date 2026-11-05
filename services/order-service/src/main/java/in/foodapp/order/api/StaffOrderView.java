@@ -14,6 +14,7 @@ public record StaffOrderView(
         String restaurantName,
         OrderStatus status,
         long totalPaise,
+        String cookingInstructions,
         List<Line> items,
         Instant createdAt,
         Instant updatedAt) {
@@ -25,6 +26,6 @@ public record StaffOrderView(
     public static StaffOrderView from(Order o, String restaurantName) {
         List<Line> lines = o.getItems().stream().map(i -> new Line(i.getName(), i.getQuantity())).toList();
         return new StaffOrderView(o.getId(), OrderNumbers.display(o.getOrderNumber()), restaurantName, o.getStatus(),
-                o.getTotalPaise(), lines, o.getCreatedAt(), o.getUpdatedAt());
+                o.getTotalPaise(), o.getCookingInstructions(), lines, o.getCreatedAt(), o.getUpdatedAt());
     }
 }

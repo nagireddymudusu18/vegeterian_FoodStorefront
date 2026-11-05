@@ -35,14 +35,15 @@ public class CatalogController {
                                        @RequestParam double lng,
                                        @RequestParam(defaultValue = "5000") int radiusMeters,
                                        @RequestParam(required = false) Diet diet,
-                                       @RequestParam(required = false) String q) {
+                                       @RequestParam(required = false) String q,
+                                       @RequestParam(defaultValue = "false") boolean includeClosed) {
         if (lat < -90 || lat > 90 || lng < -180 || lng > 180) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "lat/lng out of range");
         }
         if (radiusMeters <= 0) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "radiusMeters must be positive");
         }
-        return service.searchRestaurants(lat, lng, radiusMeters, diet, q);
+        return service.searchRestaurants(lat, lng, radiusMeters, diet, q, includeClosed);
     }
 
     @GetMapping("/restaurants/{id}")
@@ -68,6 +69,12 @@ public class CatalogController {
         return service.updateRestaurant(id, req, caller(jwt));
     }
 
+    @PatchMapping("/restaurants/{id}/status")
+    public RestaurantView updateStatus(@PathVariable UUID id, @Valid @RequestBody RestaurantStatusRequest req,
+                                       @AuthenticationPrincipal Jwt jwt) {
+        return service.setRestaurantStatus(id, req.open(), req.deliveryRadiusMeters(), caller(jwt));
+    }
+
     @PostMapping("/restaurants/{id}/items")
     public ResponseEntity<MenuItemView> addItem(@PathVariable UUID id, @Valid @RequestBody MenuItemRequest req,
                                                 @AuthenticationPrincipal Jwt jwt) {
@@ -85,6 +92,18 @@ public class CatalogController {
     public MenuItemView availability(@PathVariable UUID id, @Valid @RequestBody AvailabilityRequest req,
                                      @AuthenticationPrincipal Jwt jwt) {
         return service.setAvailability(id, req.available(), caller(jwt));
+    }
+
+    @PatchMapping("/items/availability")
+    public List<MenuItemView> bulkAvailability(@Valid @RequestBody BulkAvailabilityRequest req,
+                                               @AuthenticationPrincipal Jwt jwt) {
+        return service.setBulkAvailability(req.itemIds(), req.available(), caller(jwt));
+    }
+
+    @PatchMapping("/items/price")
+    public List<MenuItemView> bulkPrice(@Valid @RequestBody BulkPriceUpdateRequest req,
+                                        @AuthenticationPrincipal Jwt jwt) {
+        return service.setBulkPrices(req.updates(), caller(jwt));
     }
 
     private static Caller caller(Jwt jwt) {

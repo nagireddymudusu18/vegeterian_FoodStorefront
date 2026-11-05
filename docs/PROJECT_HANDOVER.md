@@ -145,8 +145,8 @@ $env:MAVEN_OPTS="-Djavax.net.ssl.trustStoreType=WINDOWS-ROOT"
 - In PowerShell, comma lists in native args need quotes (`"--allow=tcp:80,tcp:443"`); do not name a parameter `$args`.
   In Windows PowerShell 5, quote SQL identifiers passed to native tools with `\"`.
 
-**Last verified test counts (30 Oct 2026):** identity 86, catalog 65, payment 50 (after the auto-refund work), fleet 28,
-order 92, notification 49 backend tests; storefront 52 Vitest tests (3 Nov 2026, after the refund-follow helpers); `tsc`, lint and build clean; the full smoke test passed
+**Last verified test counts (4 Nov 2026):** identity 88 (including `ContactPublisherTest`), catalog 65, payment 50 (after the auto-refund work), fleet 28,
+order 92, notification 49 backend tests; storefront 65 Vitest tests across 14 suites + 5 `node:test` integration specs (4 Nov 2026, after Pure-Veg default, non-veg add confirmation, cart diet/allergen guardrails, interactive Bengaluru map & neighbourhood location picker, admin manual refunds, dead-letter alerting, kitchen menu & 86 self-service, and Finding 11 VM boot order + contact backfill); `tsc`, lint and build clean; the full smoke test passed
 (including the notification checks) before the local stack was removed. The counts for services touched by later fixes
 (order, fleet, notification, storefront) were not re-recorded. PR #3 was committed without re-running the tests locally;
 check CI on `develop` before relying on it.
@@ -254,8 +254,7 @@ Common env vars (see `deploy/gcp/vm/run-service.sh` for exactly what each servic
   Existing users get no email/SMS contact until they verify again (identity only publishes on change).
 - The Dockerfiles run only in CI (image build), never in a deployment. The GitHub CI workflows have passed on every run.
 - The browser UI for the optional emailed admin code.
-- Findings 6 to 8 are now checked in a browser (3 Nov 2026). Still unchecked: dead-letter retry and discard (nothing was parked), the
-  admin page layouts at phone width, and the dead-letter and flag pages with the new G7 header at phone width.
+- Findings 6 to 8 are now checked in a browser (3 Nov 2026), and on 4 Nov 2026 the admin nav row, `/admin/flags`, `/admin/dead-letters`, `/admin/refunds`, `/restaurant/menu` and `/partner` were verified at `390x844` phone width with zero horizontal overflow (`scrollWidth === 390`) and zero console errors. Still unchecked against the live cloud sandbox: dead-letter retry and discard with real parked events.
 - Account deletion's effect inside notification-service (erasure of contacts and inbox) was not checked on the cloud.
 - The IAM roles on the VM service account were bound but not audited.
 - Real Razorpay, SMS and email providers (none connected).
@@ -280,7 +279,7 @@ Findings, most important first:
    reject refunds the captured payment (key `auto:<paymentId>`) and order-service moves the order to `REFUNDED`; a capture
    that arrives after the order closed is refunded at once. Tested: 9 new payment tests (50 in the service, all green) and the
    sandbox for both customer cancel and restaurant reject (order `REFUNDED`, payment `REFUNDED`, refund notification).
-   Still open: no admin UI for manual refunds (API only).
+   **Admin manual refund UI added locally 4 Nov 2026 (`/admin/refunds`, not deployed, not committed):** payment lookup (`GET /api/payments/payments/{id}`), full or partial ₹ refund amount validation against `amountPaise - refundedPaise`, required audit reason, and destructive confirmation dialog (`POST /api/payments/payments/{id}/refund` with `Idempotency-Key`).
 2. ~~**Partner screen: "Available orders" stays empty after going Online**~~ **FIXED and deployed (merged in PR #3).** The
    dashboard now reloads when the online flag changes and ignores the 409 a pool request gets right after going offline; the
    stale error banner is cleared after a successful refresh. Tested in a browser (local storefront against the sandbox):
@@ -303,14 +302,15 @@ Findings, most important first:
 8. ~~**Admin gaps**~~ **FIXED, deployed and checked in a browser 3 Nov 2026 (PR #3).** The restaurant link form worked (linked an account to Green Leaf Vegan Kitchen),
    the dead-letter page showed its empty state and the corrected `delivery_module` text. New admin restaurants and dead-letter
    pages in the console (restaurant owner link, dead-letter retry/discard), and the `delivery_module` flag text was corrected
-   (identity migration V6). Still open: no alerting on dead letters, and no admin UI for manual refunds.
+   (identity migration V6). **FIXED locally 4 Nov 2026 (not deployed, not committed):** dead-letter alerting (`AdminLayout` polls `deadLettersApi.list` across `orders`, `payments`, `fleet`, `notifications` every 30s and renders a `role="alert"` banner + red count badge in `StaffHeader`), Admin manual refund console (`/admin/refunds`), and Kitchen menu & 86 self-service (`/restaurant/menu` with live `findDietViolations` guardrail checks).
 9. ~~**Console noise**~~ **FIXED, checked locally (PR #3).** The storefront refreshes the token before it expires, so the 401
    after sign-in is gone; the partner pool ignores the 409 on the offline switch. Harmless 404s for `/fleet/me` before partner
    registration and aborted requests on navigation may remain.
-10. **Product questions:** non-veg items are listed under the "All" diet at a "Tier 2 segregated" kitchen; legal pages are
+10. **Product questions:** ~~non-veg items are listed under the "All" diet at a "Tier 2 segregated" kitchen~~ **FIXED locally 4 Nov 2026 (Option B: `DEFAULT_DIET = "PURE_VEG"`, banner when switching to `"ALL"`, confirmation dialog before adding a non-veg dish, and dietary/allergen conflict check in Cart, CartSheet and Checkout; not deployed, not committed)**; legal pages are
     still drafts with placeholders.
-11. **Ops:** on the first boot after a deploy identity crash-looped until the installer replaced `app.env` (old units start
-    first; harmless but noisy); existing users still need a contact backfill for email/SMS.
+11. ~~**Ops:** on the first boot after a deploy identity crash-looped until the installer replaced `app.env` (old units start
+    first; harmless but noisy); existing users still need a contact backfill for email/SMS.~~ **FIXED locally 4 Nov 2026 (not deployed, not committed).**
+    `deploy/gcp/vm/install.sh` now clears `/run/veggo-ready` and stops running `veggo@*` and `veggo-storefront` units before replacing `app.env` and `jars/*.jar` atomically via `.tmp` staging, gates `veggo@.service` and `veggo-storefront.service` on `ConditionPathExists=/run/veggo-ready` (so systemd does not start stale units during a VM reboot before `install.sh` finishes), and waits for `127.0.0.1:5432` (Cloud SQL Auth Proxy) before touching `/run/veggo-ready` and starting the services. `deploy/gcp/vm/Caddyfile` also enforces `request_body { max_size 1MB }` (`256KB` on `/webhooks/razorpay`). For the contact backfill, `identity-service` now exposes `POST /admin/contacts/backfill` (`ContactPublisher.backfillUser` + `UserService.backfillVerifiedContacts`), wired to a "Sync verified contacts" ops card on `/admin`.
 12. ~~**Order page stops following a cancelled order (found 2 Nov 2026).**~~ **FIXED locally 3 Nov 2026 (not deployed, not committed).** `isTerminal` still
     marks `CANCELLED`, `REJECTED` and `MERCHANT_REJECTED` as failures, but the order page and the tracking page now keep following them
     for 3 minutes (`REFUND_FOLLOW_MS` in `features/orders/orders.ts`, hook `useKeepFollowing`) so the later move to `REFUNDED` shows up
@@ -374,8 +374,8 @@ sandbox and adds `Access-Control-Allow-Origin: http://localhost:3000` is needed 
     replaces the three dark headers (green, orange, black). Layouts no longer set a `bg-stone-50` page colour (cream shows through), and the
     admin, kitchen and partner pages use the shared `card` style and the heavier page title. Checked on 3 Nov 2026 with real sandbox data (local
         storefront): admin pages (dashboard, flags, deliveries, restaurants, dead letters, team) with the current section highlighted, the kitchen live
-        orders and the partner dashboard all render with the new header, no console errors and no sideways scroll at 390px on the kitchen page; tsc, lint, 52
-        tests and build clean. Not checked at phone width: the admin nav row and the partner page.
+        orders and the partner dashboard all render with the new header, no console errors and no sideways scroll at 390px on the kitchen page; tsc, lint, 58
+        tests and build clean. Checked on 4 Nov 2026 at `390x844` phone width: `/admin`, `/admin/refunds`, `/admin/dead-letters`, `/admin/flags`, `/restaurant/menu` and `/partner` all fit cleanly with `scrollWidth === 390` and zero console errors.
   - Next: dish photos once restaurant uploads exist.
 - **F. Free building blocks (research, 31 Oct 2026; verify each vendor page before adopting).** Agreed order, one step at a
   time with validation after each: SEO built-ins, then sonner, then motion, then shadcn/ui. Status:
@@ -442,7 +442,14 @@ sandbox and adds `Access-Control-Allow-Origin: http://localhost:3000` is needed 
    (Redis or Postgres `LISTEN/NOTIFY`).
 7. **Production GCP setup:** bigger database tier with high availability and point-in-time recovery, then repeat the
    sandbox steps for production.
-8. Findings 10 (product questions) and 11 (ops) from the sandbox test.
+8. Findings 10 (product questions) and 11 (ops — resolved locally in `deploy/gcp/vm/install.sh`, `deploy/gcp/vm/Caddyfile`, and `POST /admin/contacts/backfill`) from the sandbox test.
+9. **Customer Account Page (`/profile`) & End-to-End Platform Enhancements (DONE locally on 4 Nov 2026, not committed):**
+   - **Identity & Encrypted Cross-Device Preferences (`identity-service` + Storefront):** Added `PATCH /me` (`UserService.updateName`), `V7__user_preferences.sql` (`preferences_enc BYTEA` encrypted with `PiiCipher` and wiped on DPDP erasure), `GET/PUT /me/preferences`, and automatic sync in `PrefsProvider`.
+   - **Customer Account Dashboard (`/profile`):** Rebuilt `app/(customer)/profile/page.tsx` into a 5-section Haldi & Leaf dashboard (Identity/Verification, Default Diet & Personal Allergen Watchlist, Saved Delivery Addresses & Spots Manager, Recent Orders & Notifications snapshot, and DPDP Communication Consents + self-service Delivery Partner enrolment).
+   - **Checkout Delivery Address & Kitchen Cooking Instructions (`order-service` + Storefront):** Added `V8__delivery_address_and_notes.sql` (`delivery_address`, `cooking_instructions`), updated `CreateOrderRequest`, `Order`, `OrderView`, `StaffOrderView`, and `OrderService.java`, and enhanced `/checkout`, `/orders/[id]`, and `/restaurant` so customers pick saved addresses + dietary cooking presets and kitchens see prep notes on live tickets.
+   - **1-Tap Reorder & Printable GST Tax Invoice:** Added 1-tap **"Order again"** on `/orders` and `/orders/[id]`, plus a printable **Itemised GST Tax Invoice (`CGST 2.5%` + `SGST 2.5%`)** on `/orders/[id]`.
+   - **Admin Restaurant Onboarding (`/admin/restaurants`):** Added **"+ Onboard restaurant"** (`POST /restaurants` in `catalog-service`) with 14-digit FSSAI license validation, Tier 1/Tier 2 certification selection, and Bengaluru hub coordinates.
+   - **Latency & Connection-Pool Tuning (`run-service.sh` & `application.yml`):** Set `DB_POOL_MIN_IDLE=1` and `DB_POOL_IDLE_MS=300000` (5 min) across all 6 services to eliminate cold Cloud SQL proxy connection handshakes after 10s idle, lowered `FEED_POLL_MS` from `2000` to `1000` on the VM, and added `Cache-Control: public, max-age=15, stale-while-revalidate=60` on public `GET /flags` and `GET /restaurants`.
 
 ## 10. Tips for the next agent
 

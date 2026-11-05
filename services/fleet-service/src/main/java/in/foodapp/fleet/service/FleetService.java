@@ -83,6 +83,15 @@ public class FleetService {
 
     @Transactional(readOnly = true)
     public List<DeliveryView> mine(UUID userId) {
+        return mine(userId, false);
+    }
+
+    @Transactional(readOnly = true)
+    public List<DeliveryView> mine(UUID userId, boolean history) {
+        if (history) {
+            return jdbc.query("SELECT * FROM deliveries WHERE partner_id = ? AND status NOT IN " + ACTIVE
+                    + " ORDER BY updated_at DESC LIMIT 100", DELIVERY, userId);
+        }
         return jdbc.query("SELECT * FROM deliveries WHERE partner_id = ? AND status IN " + ACTIVE
                 + " ORDER BY created_at", DELIVERY, userId);
     }

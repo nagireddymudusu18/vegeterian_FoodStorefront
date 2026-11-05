@@ -59,6 +59,9 @@ public class User {
     @Column(name = "email_verified", nullable = false)
     private boolean emailVerified;
 
+    @Column(name = "preferences_enc")
+    private byte[] preferencesEnc;
+
     protected User() {
     }
 
@@ -84,6 +87,7 @@ public class User {
         this.emailEnc = null;
         this.emailHash = null;
         this.passwordHash = null;
+        this.preferencesEnc = null;
     }
 
     public boolean isLocked(Instant now) {
@@ -194,5 +198,13 @@ public class User {
 
     public Instant getDeletedAt() {
         return deletedAt;
+    }
+
+    public byte[] getPreferencesEnc() {
+        return preferencesEnc;
+    }
+
+    public void setPreferencesEnc(byte[] preferencesEnc) {
+        this.preferencesEnc = preferencesEnc;
     }
 }
