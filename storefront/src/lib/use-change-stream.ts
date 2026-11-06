@@ -5,10 +5,11 @@ import { getTokens } from "./tokens";
 import { refreshSession } from "./api";
 import { readChangeStream } from "./change-stream";
 
+const POLL_INTERVAL_MS = 15_000;
 const MAX_BACKOFF_MS = 30_000;
 
 /**
- * Keeps a live "something changed" stream open and calls onChange for every push. Returns true while connected.
+ * Keeps a live "something changed" stream active and calls onChange for every push. Returns true while connected.
  * Reconnects with backoff and renews an expired token first. Callers keep a slow refresh as a fallback.
  */
 export function useChangeStream(path: string, enabled: boolean, onChange: () => void): boolean {
@@ -26,6 +27,7 @@ export function useChangeStream(path: string, enabled: boolean, onChange: () => 
     let failures = 0;
 
     const connect = async () => {
+      let succeeded = false;
       try {
         const t = getTokens();
         if (t && (t.expiresAt ?? Infinity) - Date.now() < 30_000) await refreshSession();
@@ -34,6 +36,7 @@ export function useChangeStream(path: string, enabled: boolean, onChange: () => 
           {
             onOpen: () => {
               failures = 0;
+              succeeded = true;
               setLive(true);
             },
             onChange: () => handler.current(),
@@ -42,10 +45,13 @@ export function useChangeStream(path: string, enabled: boolean, onChange: () => 
         );
       } catch {
         failures += 1;
+        setLive(false);
       }
-      setLive(false);
       if (ctrl.signal.aborted) return;
-      timer = setTimeout(connect, Math.min(1000 * 2 ** Math.min(failures, 5), MAX_BACKOFF_MS));
+      const delay = succeeded
+        ? POLL_INTERVAL_MS
+        : Math.min(2000 * 2 ** Math.min(failures, 4), MAX_BACKOFF_MS);
+      timer = setTimeout(connect, delay);
     };
     void connect();
 

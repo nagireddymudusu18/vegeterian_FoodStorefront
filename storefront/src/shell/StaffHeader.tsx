@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { BrandLogo } from "@/components/Logo";
+import { useAuth } from "@/features/auth";
 import { NotificationBell } from "@/features/notifications";
 
 export interface StaffLink {
@@ -18,7 +19,6 @@ export function StaffHeader({
   links = [],
   bell = false,
   onLogout,
-  storeLabel = "Storefront",
   widthClass = "max-w-4xl",
 }: {
   area: string;
@@ -30,21 +30,29 @@ export function StaffHeader({
   widthClass?: string;
 }) {
   const pathname = usePathname();
+  const { me } = useAuth();
   const active = (href: string) => (href === homeHref ? pathname === href : pathname === href || pathname.startsWith(`${href}/`));
+  const partnerName = me?.name?.trim() || me?.email || me?.phone || null;
 
   return (
-    <header className="sticky top-0 z-30 border-b border-stone-200 bg-cream/90 backdrop-blur">
+    <header className="sticky top-0 z-30 border-b border-stone-200 bg-cream/95 backdrop-blur">
       <div className={`mx-auto flex ${widthClass} items-center gap-2 px-4 py-2.5 sm:gap-3`}>
         <Link href={homeHref} aria-label={`Veggo Eats ${area}`} className="flex min-w-0 items-center gap-2 rounded-lg">
           <BrandLogo />
           <span className="rounded-full bg-haldi px-2.5 py-1 text-xs font-bold uppercase tracking-wide text-ink">{area}</span>
         </Link>
-        <div className="ml-auto flex items-center gap-1 text-sm">
-          <Link href="/" className="hidden rounded-lg px-3 py-2 font-medium text-stone-700 hover:bg-stone-100 sm:block">
-            {storeLabel}
-          </Link>
+        <div className="ml-auto flex items-center gap-1.5 text-sm sm:gap-2">
+          {partnerName && (
+            <span className="hidden max-w-[11rem] truncate rounded-full border border-stone-200 bg-white px-3 py-1.5 text-xs font-semibold text-stone-700 sm:inline-block">
+              {partnerName}
+            </span>
+          )}
           {bell && <NotificationBell />}
-          <button type="button" onClick={onLogout} className="rounded-full bg-stone-100 px-4 py-2 font-semibold text-ink hover:bg-stone-200">
+          <button
+            type="button"
+            onClick={onLogout}
+            className="rounded-full bg-stone-200/80 px-4 py-2 text-xs font-bold text-ink transition hover:bg-stone-300 sm:text-sm"
+          >
             Sign out
           </button>
         </div>

@@ -24,16 +24,12 @@ const isVercel = Boolean(process.env.VERCEL);
 
 /** @type {(phase: string) => import('next').NextConfig} */
 const nextConfig = (phase) => ({
-  distDir: phase === PHASE_DEVELOPMENT_SERVER ? ".next/cache/dev" : ".next",
+  distDir: phase === PHASE_DEVELOPMENT_SERVER ? ".next-dev" : ".next",
   ...(phase !== PHASE_DEVELOPMENT_SERVER && !isVercel ? { output: "standalone" } : {}),
   outputFileTracingRoot: path.join(__dirname, ".."),
   devIndicators: false,
   reactStrictMode: true,
   poweredByHeader: false,
-  webpack: (config) => {
-    config.cache = false;
-    return config;
-  },
   async headers() {
     const noindex = [{ key: "X-Robots-Tag", value: "noindex, nofollow" }];
     // Without NEXT_PUBLIC_ALLOW_INDEXING=true (sandbox) nothing is indexable; private areas never are.

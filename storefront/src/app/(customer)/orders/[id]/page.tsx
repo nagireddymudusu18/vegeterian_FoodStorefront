@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { orders, errorMessage, type Order } from "@/lib/api";
+import { getCachedOrder, orders, errorMessage, type Order } from "@/lib/api";
 import {
   CANCELLATION_REASONS,
   Stepper,
@@ -34,12 +34,12 @@ const POLL_LIVE_MS = 15000;
 export default function OrderPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
-  const auth = useRequireAuth();
-  const { add, clear } = useCart();
-  const authed = auth.status === "authed";
-  const [order, setOrder] = useState<Order | null>(null);
+  const [order, setOrder] = useState<Order | null>(() => getCachedOrder(id));
   const [error, setError] = useState<unknown>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(() => !getCachedOrder(id));
+  const auth = useRequireAuth(Boolean(order));
+  const { add, clear } = useCart();
+  const authed = auth.status === "authed" || Boolean(order);
   const [confirmCancel, setConfirmCancel] = useState(false);
   const [selectedReason, setSelectedReason] = useState<string>(CANCELLATION_REASONS[0]);
   const [customNote, setCustomNote] = useState("");
@@ -78,7 +78,13 @@ export default function OrderPage() {
         if (!following || isFinal(o.status)) return; // stop polling once the order is final
       } catch (e) {
         if (stop || (e instanceof DOMException && e.name === "AbortError")) return;
-        setError(e);
+        const cached = getCachedOrder(id);
+        if (cached) {
+          setOrder((prev) => prev ?? cached);
+          setError(null);
+        } else {
+          setError(e);
+        }
         setLoading(false);
       }
       timer = setTimeout(tick, pollMs);
@@ -129,8 +135,8 @@ export default function OrderPage() {
     router.push("/cart");
   };
 
-  if (!authed) return <OrderDetailSkeleton label="Loading order" />;
-  if (loading) return <OrderDetailSkeleton label="Loading order" />;
+  if (!authed && !order) return <OrderDetailSkeleton label="Loading order" />;
+  if (loading && !order) return <OrderDetailSkeleton label="Loading order" />;
   if (!order) return <ErrorBox error={error} onRetry={() => setNonce((n) => n + 1)} />;
 
   const failed = isFailure(order.status);

@@ -1106,26 +1106,145 @@ function b64UrlEncode(obj: object): string {
     .replace(/=+$/, "");
 }
 
+interface TokenClaims {
+  sub?: string;
+  name?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  emailVerified?: boolean;
+  roles?: string[];
+  accountDomain?: AccountDomain;
+  customerGroup?: CustomerGroupProfile | null;
+  exp?: number;
+}
+
+function b64UrlDecode<T>(encoded: string): T | null {
+  try {
+    const padded = encoded.replace(/-/g, "+").replace(/_/g, "/");
+    const json = Buffer.from(padded, "base64").toString("utf8");
+    return JSON.parse(json) as T;
+  } catch {
+    return null;
+  }
+}
+
 function issueTokens(state: BackendState, user: StoredUser, activeDomain?: AccountDomain): TokenResponse {
   const header = b64UrlEncode({ alg: "RS256", typ: "JWT" });
   const domain = activeDomain ?? user.accountDomain ?? "CUSTOMER";
   const payload = b64UrlEncode({
     sub: user.id,
+    name: user.name,
+    phone: user.phone,
+    email: user.email,
+    emailVerified: user.emailVerified,
     roles: user.roles,
     accountDomain: domain,
+    customerGroup: user.customerGroup ?? null,
     iat: Math.floor(Date.now() / 1000),
-    exp: Math.floor(Date.now() / 1000) + 3600,
+    exp: Math.floor(Date.now() / 1000) + 86400 * 7,
     jti: Math.random().toString(36).slice(2),
   });
   const accessToken = `${header}.${payload}.sig_${Math.random().toString(36).slice(2)}`;
-  const refreshToken = `rt_${user.id}_${Math.random().toString(36).slice(2)}`;
+  const refreshToken = `rt.${payload}.sig_${Math.random().toString(36).slice(2)}`;
   state.tokens.set(accessToken, user.id);
   state.tokens.set(refreshToken, user.id);
   return {
     accessToken,
     refreshToken,
-    expiresIn: 3600,
+    expiresIn: 86400 * 7,
   };
+}
+
+function restoreUserFromToken(state: BackendState, rawToken: string): StoredUser | null {
+  const token = rawToken.trim();
+  if (!token) return null;
+
+  // 1. Check in-memory map first
+  const mappedUserId = state.tokens.get(token);
+  if (mappedUserId) {
+    const existing = state.users.get(mappedUserId);
+    if (existing) return existing;
+  }
+
+  // 2. Decode self-contained JWT accessToken (header.payload.sig_...) or refreshToken (rt.payload.sig_...)
+  const parts = token.split(".");
+  if (parts.length === 3 && parts[2].startsWith("sig_")) {
+    const claims = b64UrlDecode<TokenClaims>(parts[1]);
+    if (claims && typeof claims.sub === "string" && claims.sub.length > 0) {
+      let user = state.users.get(claims.sub);
+      const domain: AccountDomain =
+        claims.accountDomain && isValidAccountDomain(claims.accountDomain)
+          ? claims.accountDomain
+          : "CUSTOMER";
+
+      if (!user && claims.phone) {
+        user = [...state.users.values()].find(
+          (u) => u.phone === claims.phone && (u.accountDomain ?? "CUSTOMER") === domain,
+        );
+      }
+      if (!user && claims.email) {
+        const cleanEmail = claims.email.toLowerCase();
+        user = [...state.users.values()].find(
+          (u) => u.email?.toLowerCase() === cleanEmail && (u.accountDomain ?? "CUSTOMER") === domain,
+        );
+      }
+      if (!user) {
+        const roles =
+          Array.isArray(claims.roles) && claims.roles.length > 0
+            ? claims.roles
+            : defaultRolesForAccountDomain(domain);
+        user = {
+          id: claims.sub,
+          name: claims.name ?? null,
+          phone: claims.phone ?? null,
+          email: claims.email ?? null,
+          emailVerified: Boolean(claims.emailVerified ?? Boolean(claims.email)),
+          roles,
+          accountDomain: domain,
+          customerGroup:
+            domain === "CUSTOMER"
+              ? (claims.customerGroup ?? createDefaultCustomerGroupProfile({}, state.orgCustomerGroupRules))
+              : null,
+          mainAdmin: roles.includes("SUPER_ADMIN"),
+          status: "ACTIVE",
+          createdAt: new Date().toISOString(),
+        };
+        state.users.set(user.id, user);
+      }
+      provisionDomainPartnerRecordIfNeeded(state, user, domain);
+      state.tokens.set(token, user.id);
+      return user;
+    }
+  }
+
+  // 3. Backwards compatibility for legacy refresh tokens formatted as rt_<userId>_<random>
+  if (token.startsWith("rt_")) {
+    const lastUnderscore = token.lastIndexOf("_");
+    const extractedId = lastUnderscore > 3 ? token.slice(3, lastUnderscore) : "";
+    if (extractedId) {
+      let user = state.users.get(extractedId);
+      if (!user) {
+        user = {
+          id: extractedId,
+          name: "Verified Diner",
+          phone: null,
+          email: null,
+          emailVerified: false,
+          roles: ["CUSTOMER"],
+          accountDomain: "CUSTOMER",
+          customerGroup: createDefaultCustomerGroupProfile({}, state.orgCustomerGroupRules),
+          mainAdmin: false,
+          status: "ACTIVE",
+          createdAt: new Date().toISOString(),
+        };
+        state.users.set(user.id, user);
+      }
+      state.tokens.set(token, user.id);
+      return user;
+    }
+  }
+
+  return null;
 }
 
 export function pushNotification(
@@ -1165,13 +1284,9 @@ export function requireUser(authHeader: string | null): StoredUser {
     throw new HttpProblem(401, "Unauthorized", "Missing or invalid authorization token");
   }
   const token = authHeader.slice("Bearer ".length).trim();
-  const userId = state.tokens.get(token);
-  if (!userId) {
-    throw new HttpProblem(401, "Unauthorized", "Session expired");
-  }
-  const user = state.users.get(userId);
+  const user = restoreUserFromToken(state, token);
   if (!user) {
-    throw new HttpProblem(401, "Unauthorized", "Account not found");
+    throw new HttpProblem(401, "Unauthorized", "Session expired");
   }
   return user;
 }
@@ -1738,6 +1853,58 @@ export function computeOrderTaxQuoteForUser(
   });
 }
 
+function hydrateOrderFromSnapshot(
+  state: BackendState,
+  userId: string,
+  orderId: string,
+  amountPaise: number,
+  snapshot?: Order | null,
+): StoredOrder | null {
+  if (!snapshot || typeof snapshot !== "object") return null;
+  const generated = generateOrderNumber();
+  const displayOrderNumber = snapshot.orderNumber || generated.display;
+  const rawOrderNumber = normalizeOrderNumber(displayOrderNumber) || generated.raw;
+  const now = new Date().toISOString();
+  const hydrated: StoredOrder = {
+    id: orderId,
+    userId,
+    orderNumber: displayOrderNumber,
+    rawOrderNumber,
+    restaurantId: snapshot.restaurantId || "rest-saffron-1",
+    restaurantName: snapshot.restaurantName || "Saffron Pure Veg Bhavan",
+    status: snapshot.status || "CREATED",
+    subtotalPaise: snapshot.subtotalPaise ?? Math.max(0, amountPaise - 3000),
+    discountPaise: snapshot.discountPaise ?? 0,
+    discountPercent: snapshot.discountPercent ?? 0,
+    appliedGroupRule: snapshot.appliedGroupRule ?? null,
+    taxPaise: snapshot.taxPaise ?? 0,
+    deliveryFeePaise: snapshot.deliveryFeePaise ?? 3000,
+    totalPaise: snapshot.totalPaise ?? amountPaise,
+    items: (snapshot.items ?? []).map((it) => ({
+      itemId: it.itemId || "item-1",
+      name: it.name || "Item",
+      quantity: it.quantity || 1,
+      unitPricePaise: it.unitPricePaise ?? it.pricePaise ?? 0,
+      pricePaise: it.pricePaise ?? it.unitPricePaise ?? 0,
+      linePaise: it.linePaise ?? (it.unitPricePaise ?? it.pricePaise ?? 0) * (it.quantity || 1),
+    })),
+    deliveryOtp: snapshot.deliveryOtp || "4829",
+    deliveryAddress: snapshot.deliveryAddress ?? null,
+    cookingInstructions: snapshot.cookingInstructions ?? null,
+    cancellationReason: snapshot.cancellationReason ?? null,
+    taxBreakdown: snapshot.taxBreakdown ?? null,
+    paymentMethodLabel: snapshot.paymentMethodLabel ?? null,
+    createdAt: snapshot.createdAt || now,
+    updatedAt: snapshot.updatedAt || now,
+    timeline: Array.isArray(snapshot.timeline) && snapshot.timeline.length > 0
+      ? [...snapshot.timeline]
+      : [{ status: "CREATED", at: now }],
+    paid: snapshot.status === "PAID",
+  };
+  state.orders.set(orderId, hydrated);
+  return hydrated;
+}
+
 export function createPaymentForOrder(
   userId: string,
   orderId: string,
@@ -1751,7 +1918,10 @@ export function createPaymentForOrder(
     if (existing) return existing;
   }
 
-  const order = state.orders.get(orderId);
+  let order = state.orders.get(orderId);
+  if (!order && meta?.orderSnapshot) {
+    order = hydrateOrderFromSnapshot(state, userId, orderId, amountPaise, meta.orderSnapshot) ?? undefined;
+  }
   if (!order) {
     throw new HttpProblem(404, "Order not found", "Cannot process payment for unknown order");
   }
@@ -1775,26 +1945,6 @@ export function createPaymentForOrder(
         : meta?.bankName
           ? `NetBanking (${meta.bankName})`
           : "UPI Instant Pay");
-
-  const payment: Payment = {
-    id: paymentId,
-    orderId,
-    customerId: userId,
-    amountPaise,
-    currency: "INR",
-    status: failed ? "FAILED" : "CAPTURED",
-    gateway: "razorpay",
-    gatewayRef: `rzp_pay_${order.orderNumber}`,
-    gatewayOrderId,
-    signature,
-    signatureVerified,
-    method,
-    methodLabel,
-    failureReason: failed ? "Payment declined by issuing bank" : null,
-    createdAt: now,
-    updatedAt: now,
-  };
-  state.payments.set(payment.id, payment);
 
   if (!failed && order.status === "CREATED") {
     order.status = "PAID";
@@ -1828,6 +1978,27 @@ export function createPaymentForOrder(
       order.id,
     );
   }
+
+  const payment: Payment = {
+    id: paymentId,
+    orderId,
+    customerId: userId,
+    amountPaise,
+    currency: "INR",
+    status: failed ? "FAILED" : "CAPTURED",
+    gateway: "razorpay",
+    gatewayRef: `rzp_pay_${order.orderNumber}`,
+    gatewayOrderId,
+    signature,
+    signatureVerified,
+    method,
+    methodLabel,
+    failureReason: failed ? "Payment declined by issuing bank" : null,
+    order: { ...order },
+    createdAt: now,
+    updatedAt: now,
+  };
+  state.payments.set(payment.id, payment);
 
   if (idempotencyKey) {
     state.idempotentPayments.set(`${userId}:${idempotencyKey}`, payment);
@@ -1892,9 +2063,24 @@ export function refundPaymentById(idOrOrderRef: string, amountPaise: number): Re
   };
 }
 
-export function cancelOrderByCustomer(orderId: string, reason?: string | null): StoredOrder {
+export function cancelOrderByCustomer(
+  orderId: string,
+  reason?: string | null,
+  userId?: string,
+  orderSnapshot?: Order | null,
+): StoredOrder {
   const state = getBackendState();
-  const order = state.orders.get(orderId);
+  let order = state.orders.get(orderId);
+  if (!order && orderSnapshot) {
+    order =
+      hydrateOrderFromSnapshot(
+        state,
+        userId || "00000000-0000-0000-0000-000000000001",
+        orderId,
+        orderSnapshot.totalPaise ?? 0,
+        orderSnapshot,
+      ) ?? undefined;
+  }
   if (!order) throw new HttpProblem(404, "Order not found");
   const now = new Date().toISOString();
   const cleanReason = reason?.trim() || null;
@@ -2065,13 +2251,25 @@ export function loginEmailUser(
     ? (domainInput!.toUpperCase() as AccountDomain)
     : "CUSTOMER";
 
+  const EMAIL_ALIASES: Record<string, string> = {
+    "customer@veggoeats.in": "rohan.mehta@example.com",
+    "jain@veggoeats.in": "ananya.shah@example.com",
+    "vegan@veggoeats.in": "kabir.verma@example.com",
+    "kitchen@veggoeats.in": "aarav.kitchen@veggoeats.in",
+    "restaurant@veggoeats.in": "aarav.kitchen@veggoeats.in",
+    "rider@veggoeats.in": "priya.rider@veggoeats.in",
+    "partner@veggoeats.in": "priya.rider@veggoeats.in",
+    "admin@veggoeats.in": "nagireddy.mudusu@gmail.com",
+  };
+  const resolvedEmail = EMAIL_ALIASES[cleanEmail] ?? cleanEmail;
+
   // Match account within targetDomain first; allow mainSuperAdmin on ADMIN portal
   let user = [...state.users.values()].find(
-    (u) => u.email?.toLowerCase() === cleanEmail && (u.accountDomain ?? "CUSTOMER") === targetDomain,
+    (u) => u.email?.toLowerCase() === resolvedEmail && (u.accountDomain ?? "CUSTOMER") === targetDomain,
   );
   if (!user && targetDomain === "ADMIN") {
     user = [...state.users.values()].find(
-      (u) => u.email?.toLowerCase() === cleanEmail && u.roles.includes("ADMIN"),
+      (u) => u.email?.toLowerCase() === resolvedEmail && u.roles.includes("ADMIN"),
     );
   }
   if (!user) {
@@ -2106,13 +2304,9 @@ export function loginEmailUser(
 
 export function refreshUserSession(refreshToken: string): TokenResponse {
   const state = getBackendState();
-  const userId = state.tokens.get(refreshToken);
-  if (!userId) {
-    throw new HttpProblem(401, "Invalid refresh token", "Please sign in again.");
-  }
-  const user = state.users.get(userId);
+  const user = restoreUserFromToken(state, refreshToken);
   if (!user) {
-    throw new HttpProblem(401, "Account not found", "Please sign in again.");
+    throw new HttpProblem(401, "Invalid refresh token", "Please sign in again.");
   }
   return issueTokens(state, user, user.accountDomain ?? "CUSTOMER");
 }

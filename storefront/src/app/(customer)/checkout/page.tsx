@@ -80,6 +80,7 @@ export default function CheckoutPage() {
   const [phase, setPhase] = useState<Phase>("idle");
   const [error, setError] = useState<unknown>(null);
   const [placed, setPlaced] = useState<Order | null>(null);
+  const [completedOrderId, setCompletedOrderId] = useState<string | null>(null);
   const [gatewayOpen, setGatewayOpen] = useState(false);
   const [deliveryNotes, setDeliveryNotes] = useState("");
   const [cookingInstructions, setCookingInstructions] = useState("");
@@ -124,6 +125,25 @@ export default function CheckoutPage() {
 
   if (!ready || auth.status === "loading") return <CheckoutSkeleton label="Preparing checkout" />;
 
+  if (completedOrderId) {
+    return (
+      <div className="rounded-2xl border border-emerald-200 bg-emerald-50/80 p-8 text-center">
+        <p className="mb-2 text-base font-bold text-emerald-950">
+          Payment verified — opening your live order tracker...
+        </p>
+        <p className="mb-4 text-xs text-emerald-800">
+          Your kitchen ticket #{completedOrderId.slice(0, 8)} is confirmed.
+        </p>
+        <Link
+          href={`/orders/${encodeURIComponent(completedOrderId)}`}
+          className="btn-primary inline-flex px-5 py-2.5 text-sm"
+        >
+          View order status
+        </Link>
+      </div>
+    );
+  }
+
   if (cart.lines.length === 0 || !cart.restaurantId) {
     return (
       <div className="rounded-2xl border border-dashed border-stone-300 bg-white/70 p-8 text-center">
@@ -150,7 +170,10 @@ export default function CheckoutPage() {
     a.payKey ??= crypto.randomUUID();
     saveAttempt(a);
     try {
-      const p = await payments.create(a.order.id, a.order.totalPaise, a.payKey, meta);
+      const p = await payments.create(a.order.id, a.order.totalPaise, a.payKey, {
+        ...meta,
+        orderSnapshot: placed ?? undefined,
+      });
       if (isPaymentFailure(p.status)) {
         setGatewayOpen(false);
         setError(
@@ -162,11 +185,13 @@ export default function CheckoutPage() {
         setPhase("payment-failed");
         return;
       }
+      const targetOrderId = a.order.id;
       setGatewayOpen(false);
+      setCompletedOrderId(targetOrderId);
       saveAttempt(null);
       clear();
       toast.success(`Payment verified (${p.methodLabel ?? "UPI"})`);
-      router.replace(`/orders/${encodeURIComponent(a.order.id)}`);
+      router.replace(`/orders/${encodeURIComponent(targetOrderId)}`);
     } catch (e) {
       setGatewayOpen(false);
       setError(e);

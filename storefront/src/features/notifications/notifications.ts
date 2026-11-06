@@ -22,7 +22,13 @@ export function badgeLabel(unread: number): string | null {
 }
 
 /** Where tapping a notification should go; null when it has no destination. */
-export function notificationHref(n: Pick<AppNotification, "kind" | "orderId">): string | null {
+export function notificationHref(
+  n: Pick<AppNotification, "kind" | "orderId">,
+  scope: "customer" | "restaurant" | "partner" | "admin" = "customer",
+): string | null {
+  if (scope === "restaurant") return "/restaurant";
+  if (scope === "partner") return "/partner";
+  if (scope === "admin") return "/admin";
   switch (n.kind) {
     case "NEW_ORDER":
       return "/restaurant";

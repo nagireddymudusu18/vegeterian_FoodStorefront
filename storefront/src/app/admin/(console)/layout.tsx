@@ -1,12 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
 import { rolesFromAccessToken, useAuth } from "@/features/auth";
 import { deadLettersApi, identity, type DeadLetterService } from "@/lib/api";
 import { getTokens } from "@/lib/tokens";
 import { Spinner } from "@/components/ui";
+import { StaffFooter } from "@/shell/StaffFooter";
 import { StaffHeader } from "@/shell/StaffHeader";
 
 const DEAD_LETTER_SERVICES: DeadLetterService[] = ["orders", "payments", "fleet", "notifications"];
@@ -18,16 +19,18 @@ const DEAD_LETTER_SERVICES: DeadLetterService[] = ["orders", "payments", "fleet"
  */
 export default function AdminLayout({ children }: { children: ReactNode }) {
   const { status, me, logout } = useAuth();
+  const router = useRouter();
   const pathname = usePathname();
   const [parkedCount, setParkedCount] = useState(0);
   const [parkedServices, setParkedServices] = useState<string[]>([]);
 
   useEffect(() => {
     if (status === "anon") {
-      const here = window.location.pathname + window.location.search;
-      window.location.replace(`/admin/login?next=${encodeURIComponent(here)}`);
+      const search = typeof window !== "undefined" ? window.location.search : "";
+      const here = (pathname || "/admin") + search;
+      router.replace(`/admin/login?next=${encodeURIComponent(here)}`);
     }
-  }, [status]);
+  }, [status, pathname, router]);
 
   const roles = rolesFromAccessToken(getTokens()?.accessToken);
   const isAdminSession = status === "authed" && !!me && roles.includes("ADMIN");
@@ -57,7 +60,16 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
     };
   }, [isAdminSession, pathname]);
 
-  if (status !== "authed" || !me) return <Spinner label="Checking access" />;
+  if (status !== "authed" || !me) {
+    return (
+      <div className="flex min-h-screen flex-col">
+        <div className="flex-1 py-12">
+          <Spinner label="Checking access" />
+        </div>
+        <StaffFooter area="Admin" widthClass="max-w-6xl" />
+      </div>
+    );
+  }
 
   if (!roles.includes("ADMIN")) {
     const isAdminAccount = identity.isAdmin(me);
@@ -74,11 +86,6 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
             Go to the admin sign-in
           </Link>
         )}
-        <div>
-          <Link href="/" className="font-semibold text-green-800 underline">
-            Back to the store
-          </Link>
-        </div>
       </main>
     );
   }
@@ -92,10 +99,15 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
     { href: "/admin/team", label: "Users & Roles" },
   ];
 
+  const handleLogout = () => {
+    logout();
+    router.replace("/admin/login");
+  };
+
   return (
-    <div className="min-h-screen">
-      <StaffHeader area="Admin" homeHref="/admin" links={links} onLogout={logout} storeLabel="View store" widthClass="max-w-6xl" />
-      <main id="main" className="mx-auto w-full max-w-6xl space-y-4 px-4 py-6">
+    <div className="flex min-h-screen flex-col">
+      <StaffHeader area="Admin" homeHref="/admin" links={links} onLogout={handleLogout} widthClass="max-w-6xl" />
+      <main id="main" className="mx-auto w-full max-w-6xl flex-1 space-y-4 px-4 py-6">
         {parkedCount > 0 && pathname !== "/admin/dead-letters" && (
           <div
             role="alert"
@@ -112,6 +124,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
         )}
         {children}
       </main>
+      <StaffFooter area="Admin" widthClass="max-w-6xl" />
     </div>
   );
 }

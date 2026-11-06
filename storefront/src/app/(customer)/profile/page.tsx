@@ -248,7 +248,28 @@ export default function ProfilePage() {
     return () => ctrl.abort();
   }, [authed]);
 
-  if (!authed || !me) return <Spinner label="Loading profile" />;
+  if (status === "loading") return <Spinner label="Loading profile" />;
+  if (!authed || !me) {
+    return (
+      <div className="card mx-auto max-w-md space-y-3 p-6 text-center">
+        <h1 className="text-xl font-bold text-ink">You are signed out</h1>
+        <p className="text-sm text-stone-600">
+          Sign in again to manage your dietary preferences, saved addresses, and Veggo Pass benefits.
+        </p>
+        <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
+          <Link href="/login?next=/profile" className="btn-primary px-5 py-2.5 text-sm">
+            Sign in
+          </Link>
+          <Link
+            href="/"
+            className="rounded-xl border border-stone-300 bg-white px-4 py-2.5 text-sm font-semibold text-stone-800 hover:bg-stone-100"
+          >
+            Browse restaurants
+          </Link>
+        </div>
+      </div>
+    );
+  }
 
   const initials = (me.name || me.email || "VE")
     .trim()

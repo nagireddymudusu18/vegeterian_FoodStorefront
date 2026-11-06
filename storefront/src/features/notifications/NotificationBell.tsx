@@ -8,7 +8,7 @@ import { useAuth } from "@/features/auth";
 
 /** Bell with an unread badge and a dropdown of the latest messages. Renders nothing for signed-out visitors. */
 export function NotificationBell({ tone = "light" }: { tone?: "light" | "dark" }) {
-  const { status } = useAuth();
+  const { status, scope } = useAuth();
   const { unread, items, refresh, markRead, markAllRead } = useNotifications();
   const [open, setOpen] = useState(false);
   const box = useRef<HTMLDivElement>(null);
@@ -78,7 +78,7 @@ export function NotificationBell({ tone = "light" }: { tone?: "light" | "dark" }
           ) : (
             <ul className="max-h-96 divide-y divide-stone-100 overflow-y-auto">
               {items.map((n) => {
-                const href = notificationHref(n);
+                const href = notificationHref(n, scope);
                 const content = (
                   <>
                     <span className="flex items-start gap-2">
@@ -111,11 +111,13 @@ export function NotificationBell({ tone = "light" }: { tone?: "light" | "dark" }
               })}
             </ul>
           )}
-          <div className="border-t border-stone-200 px-4 py-2 text-center">
-            <Link href="/notifications" onClick={() => setOpen(false)} className="text-sm font-medium text-green-800 underline">
-              See all
-            </Link>
-          </div>
+          {scope === "customer" && (
+            <div className="border-t border-stone-200 px-4 py-2 text-center">
+              <Link href="/notifications" onClick={() => setOpen(false)} className="text-sm font-medium text-green-800 underline">
+                See all
+              </Link>
+            </div>
+          )}
         </div>
       )}
     </div>
