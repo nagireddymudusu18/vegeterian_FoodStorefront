@@ -25,8 +25,13 @@ const isVercel = Boolean(process.env.VERCEL);
 /** @type {(phase: string) => import('next').NextConfig} */
 const nextConfig = (phase) => ({
   distDir: phase === PHASE_DEVELOPMENT_SERVER ? ".next-dev" : ".next",
-  ...(phase !== PHASE_DEVELOPMENT_SERVER && !isVercel ? { output: "standalone" } : {}),
-  outputFileTracingRoot: path.join(__dirname, ".."),
+  ...(phase !== PHASE_DEVELOPMENT_SERVER && !isVercel
+    ? {
+        output: "standalone",
+        outputFileTracingRoot: path.join(__dirname, ".."),
+      }
+    : {}),
+  allowedDevOrigins: ["*.run.app", "localhost", "127.0.0.1"],
   devIndicators: false,
   reactStrictMode: true,
   poweredByHeader: false,

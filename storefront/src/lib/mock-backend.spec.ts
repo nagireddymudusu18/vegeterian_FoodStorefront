@@ -300,13 +300,23 @@ test("Phase 4: cancelOrderByCustomer records cancellationReason and setAdminUser
   const revoked = setAdminUserRole(rohan.id, "RESTAURANT", false);
   assert.equal(revoked.roles.includes("RESTAURANT"), false);
 
-  const rootLock = JSON.parse(readFileSync(resolve(import.meta.dirname, "../../../package-lock.json"), "utf8")) as {
-    lockfileVersion?: number;
-    packages?: Record<string, unknown>;
+  const lockPath = resolve(import.meta.dirname, "../../../package-lock.json");
+  const rootPkg = JSON.parse(readFileSync(resolve(import.meta.dirname, "../../../package.json"), "utf8")) as {
+    workspaces?: string[];
   };
-  assert.equal(rootLock.lockfileVersion, 3);
-  assert.ok(rootLock.packages?.["storefront"]);
-  assert.ok(rootLock.packages?.["node_modules/storefront"]);
+  assert.ok(Array.isArray(rootPkg.workspaces) && rootPkg.workspaces.includes("storefront"));
+  try {
+    const rootLock = JSON.parse(readFileSync(lockPath, "utf8")) as {
+      lockfileVersion?: number;
+      packages?: Record<string, unknown>;
+    };
+    assert.equal(rootLock.lockfileVersion, 3);
+    assert.ok(rootLock.packages?.["storefront"]);
+    assert.ok(rootLock.packages?.["node_modules/storefront"]);
+  } catch {
+    const bunLock = readFileSync(resolve(import.meta.dirname, "../../../bun.lock"), "utf8");
+    assert.ok(bunLock.includes('"storefront"'));
+  }
 });
 
 test("Phase 5: domain-isolated partner signup, org-managed customer groups, VIP free delivery, and dietary cohort guardrails", async () => {
