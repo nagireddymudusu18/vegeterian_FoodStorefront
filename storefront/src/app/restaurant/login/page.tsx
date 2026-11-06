@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -225,13 +224,6 @@ export default function RestaurantLoginPage() {
           </form>
         )}
       </div>
-
-      <p className="text-center text-sm text-stone-600">
-        Looking to order food as a customer?{" "}
-        <Link href="/" className="font-semibold text-green-800 underline">
-          Go to Customer Storefront
-        </Link>
-      </p>
     </main>
   );
 }

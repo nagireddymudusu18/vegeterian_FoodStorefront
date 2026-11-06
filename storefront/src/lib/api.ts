@@ -154,6 +154,7 @@ export interface Payment {
   method?: PaymentMethodKind;
   methodLabel?: string | null;
   failureReason?: string | null;
+  order?: Order;
   createdAt?: string;
   updatedAt?: string;
   [k: string]: unknown;
@@ -615,17 +616,75 @@ export const catalog = {
     ),
 };
 
+// ---------- Client-Side Order Cache (survives serverless instance hops on Vercel / Cloud Run) ----------
+
+const ORDER_CACHE_KEY = "sf.orders.cache.v1";
+const memoryOrderCache = new Map<string, Order>();
+
+function loadOrderCacheMap(): Record<string, Order> {
+  if (typeof window === "undefined") {
+    return Object.fromEntries(memoryOrderCache.entries());
+  }
+  try {
+    const raw = window.localStorage.getItem(ORDER_CACHE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as Record<string, Order>;
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+export function cacheOrder(order: Order | null | undefined): void {
+  if (!order || !order.id) return;
+  memoryOrderCache.set(order.id, order);
+  if (typeof window === "undefined") return;
+  try {
+    const map = loadOrderCacheMap();
+    map[order.id] = order;
+    // Keep most recent 40 orders
+    const entries = Object.entries(map).slice(-40);
+    window.localStorage.setItem(ORDER_CACHE_KEY, JSON.stringify(Object.fromEntries(entries)));
+  } catch {
+    /* ignore storage quota errors */
+  }
+}
+
+export function getCachedOrder(idOrNumber: string | null | undefined): Order | null {
+  if (!idOrNumber) return null;
+  const trimmed = idOrNumber.trim();
+  const inMem = memoryOrderCache.get(trimmed);
+  const map = loadOrderCacheMap();
+  if (map[trimmed]) return map[trimmed];
+  if (inMem) return inMem;
+  const cleanTarget = trimmed.toUpperCase().replace(/[\s-]/g, "");
+  for (const o of Object.values(map)) {
+    if (o.orderNumber && o.orderNumber.toUpperCase().replace(/[\s-]/g, "") === cleanTarget) {
+      return o;
+    }
+  }
+  return null;
+}
+
+export function listCachedOrders(): Order[] {
+  const map = loadOrderCacheMap();
+  for (const [k, v] of memoryOrderCache.entries()) {
+    if (!map[k]) map[k] = v;
+  }
+  return Object.values(map).sort((a, b) => (b.createdAt ?? "").localeCompare(a.createdAt ?? ""));
+}
+
 // ---------- Orders ----------
 
 export const orders = {
   /** Sends only ids and quantities (plus optional delivery address / cooking instructions); the server computes every price. */
-  create: (
+  create: async (
     restaurantId: string,
     lines: { itemId: string; quantity: number }[],
     idempotencyKey: string,
     meta?: { deliveryAddress?: string; cookingInstructions?: string },
-  ) =>
-    request<Order>("orders", "/orders", {
+  ): Promise<Order> => {
+    const created = await request<Order>("orders", "/orders", {
       method: "POST",
       auth: true,
       idempotencyKey,
@@ -635,26 +694,77 @@ export const orders = {
         ...(meta?.deliveryAddress?.trim() ? { deliveryAddress: meta.deliveryAddress.trim() } : {}),
         ...(meta?.cookingInstructions?.trim() ? { cookingInstructions: meta.cookingInstructions.trim() } : {}),
       },
-    }),
-  get: (id: string, signal?: AbortSignal) =>
-    request<Order>("orders", `/orders/${encodeURIComponent(id)}`, { auth: true, signal }),
+    });
+    cacheOrder(created);
+    return created;
+  },
+  get: async (id: string, signal?: AbortSignal): Promise<Order> => {
+    try {
+      const o = await request<Order>("orders", `/orders/${encodeURIComponent(id)}`, { auth: true, signal });
+      cacheOrder(o);
+      return o;
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 404) {
+        const cached = getCachedOrder(id);
+        if (cached) return cached;
+      }
+      throw err;
+    }
+  },
   async list(signal?: AbortSignal): Promise<Order[]> {
     const r = await request<Order[] | { content?: Order[]; items?: Order[]; orders?: Order[] }>("orders", "/orders", {
       auth: true,
       signal,
     });
-    if (Array.isArray(r)) return r;
-    return r?.content ?? r?.items ?? r?.orders ?? [];
+    const serverList = Array.isArray(r) ? r : (r?.content ?? r?.items ?? r?.orders ?? []);
+    const byId = new Map<string, Order>();
+    for (const o of serverList) {
+      byId.set(o.id, o);
+    }
+    for (const cached of listCachedOrders()) {
+      const existing = byId.get(cached.id);
+      if (!existing || (existing.status === "CREATED" && cached.status !== "CREATED")) {
+        byId.set(cached.id, cached);
+      }
+    }
+    return [...byId.values()].sort((a, b) => (b.createdAt ?? "").localeCompare(a.createdAt ?? ""));
   },
   /** Public lookup by order number; no sign-in needed. */
-  track: (orderNumber: string, signal?: AbortSignal) =>
-    request<TrackedOrder>("orders", `/orders/track/${encodeURIComponent(orderNumber.trim())}`, { signal }),
-  cancel: (id: string, reason?: string) =>
-    request<Order | undefined>("orders", `/orders/${encodeURIComponent(id)}/cancel`, {
+  track: async (orderNumber: string, signal?: AbortSignal): Promise<TrackedOrder> => {
+    try {
+      return await request<TrackedOrder>("orders", `/orders/track/${encodeURIComponent(orderNumber.trim())}`, { signal });
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 404) {
+        const cached = getCachedOrder(orderNumber);
+        if (cached && cached.orderNumber) {
+          return {
+            orderNumber: cached.orderNumber,
+            restaurantName: cached.restaurantName ?? "Veggo Partner Kitchen",
+            status: cached.status,
+            totalPaise: cached.totalPaise,
+            items: (cached.items ?? []).map((i) => ({ name: i.name ?? "Item", quantity: i.quantity })),
+            timeline: (cached.timeline ?? []).map((t) => ({ status: t.status, at: t.at })),
+            createdAt: cached.createdAt ?? new Date().toISOString(),
+            updatedAt: cached.updatedAt ?? new Date().toISOString(),
+          };
+        }
+      }
+      throw err;
+    }
+  },
+  cancel: async (id: string, reason?: string): Promise<Order | undefined> => {
+    const orderSnapshot = getCachedOrder(id) ?? undefined;
+    const updated = await request<Order | undefined>("orders", `/orders/${encodeURIComponent(id)}/cancel`, {
       method: "POST",
       auth: true,
-      ...(reason?.trim() ? { body: { reason: reason.trim() } } : {}),
-    }),
+      body: {
+        ...(reason?.trim() ? { reason: reason.trim() } : {}),
+        ...(orderSnapshot ? { orderSnapshot } : {}),
+      },
+    });
+    if (updated) cacheOrder(updated);
+    return updated;
+  },
   taxQuote: (
     body: {
       restaurantId: string;
@@ -708,16 +818,40 @@ export interface CreatePaymentMeta {
   gatewayOrderId?: string;
   signature?: string;
   simulateDecline?: boolean;
+  orderSnapshot?: Order;
 }
 
 export const payments = {
-  create: (orderId: string, amountPaise: number, idempotencyKey: string, meta?: CreatePaymentMeta) =>
-    request<Payment>("payments", "/payments", {
+  create: async (
+    orderId: string,
+    amountPaise: number,
+    idempotencyKey: string,
+    meta?: CreatePaymentMeta,
+  ): Promise<Payment> => {
+    const orderSnapshot = meta?.orderSnapshot ?? getCachedOrder(orderId) ?? undefined;
+    const p = await request<Payment>("payments", "/payments", {
       method: "POST",
       auth: true,
       idempotencyKey,
-      body: { orderId, amountPaise, ...(meta ?? {}) },
-    }),
+      body: { orderId, amountPaise, ...(meta ?? {}), ...(orderSnapshot ? { orderSnapshot } : {}) },
+    });
+    if (p.order) {
+      cacheOrder(p.order);
+    } else if (orderSnapshot && !/FAIL|DECLIN|ERROR|REJECT/i.test(p.status)) {
+      const now = new Date().toISOString();
+      cacheOrder({
+        ...orderSnapshot,
+        status: "PAID",
+        paymentMethodLabel: p.methodLabel ?? meta?.methodLabel ?? "UPI Instant Pay",
+        updatedAt: now,
+        timeline: [
+          ...(orderSnapshot.timeline ?? [{ status: "CREATED", at: orderSnapshot.createdAt ?? now }]),
+          { status: "PAID", at: now, reason: `Paid via ${p.methodLabel ?? "UPI"}` },
+        ],
+      });
+    }
+    return p;
+  },
   get: (id: string, signal?: AbortSignal) =>
     request<Payment>("payments", `/payments/${encodeURIComponent(id)}`, {
       auth: true,

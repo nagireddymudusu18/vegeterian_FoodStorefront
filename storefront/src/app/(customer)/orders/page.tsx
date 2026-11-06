@@ -66,7 +66,28 @@ export default function OrdersPage() {
     router.push("/cart");
   };
 
-  if (!authed) return <Spinner label="Loading orders" />;
+  if (auth.status === "loading") return <RowsSkeleton label="Loading orders" />;
+  if (!authed) {
+    return (
+      <div className="card mx-auto max-w-md space-y-3 p-6 text-center">
+        <h1 className="text-xl font-bold text-ink">Sign in to view your orders</h1>
+        <p className="text-sm text-stone-600">
+          Sign in with your mobile OTP or email to view your order history, live kitchen tracking, and GST invoices, or track a single order by number.
+        </p>
+        <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
+          <Link href="/login?next=/orders" className="btn-primary px-5 py-2.5 text-sm">
+            Sign in
+          </Link>
+          <Link
+            href="/track"
+            className="rounded-xl border border-stone-300 bg-white px-4 py-2.5 text-sm font-semibold text-stone-800 hover:bg-stone-100"
+          >
+            Track by order #
+          </Link>
+        </div>
+      </div>
+    );
+  }
   if (error) return <ErrorBox error={error} onRetry={() => setNonce((n) => n + 1)} />;
   if (!list) return <RowsSkeleton label="Loading orders" />;
 

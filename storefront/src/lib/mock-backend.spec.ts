@@ -394,6 +394,56 @@ test("Phase 5: domain-isolated partner signup, org-managed customer groups, VIP 
   assert.equal(updatedRules.vipDiscountPercent, 8);
 });
 
+test("Stateless JWT auth and orderSnapshot hydration survive serverless worker cold starts during payment submission", async () => {
+  resetBackendState();
+  const {
+    refreshUserSession,
+    requireUser,
+  } = await import("./mock-backend");
 
+  // 1. Customer logs in via OTP (or guest checkout OTP) and creates an order on Worker Instance A
+  const tokens = verifyOtpLogin("+919845099887", "123456", "Priya Guest");
+  const userA = requireUser(`Bearer ${tokens.accessToken}`);
+  const order = createOrderForUser(
+    userA.id,
+    "rest-saffron-1",
+    [{ itemId: "item-saffron-1", quantity: 1 }],
+    "idem-serverless-1",
+    {
+      deliveryAddress: "Indiranagar 100ft Rd, Bengaluru",
+      cookingInstructions: "Less spicy",
+    },
+  );
+  assert.equal(order.status, "CREATED");
 
+  // 2. Simulate Vercel / Cloud Run routing the subsequent POST /api/payments/payments request
+  // to a completely fresh serverless worker instance (in-memory state reset)
+  resetBackendState();
 
+  // 3. requireUser must NOT throw 401 Unauthorized — it restores the user session from the signed JWT claims
+  const userB = requireUser(`Bearer ${tokens.accessToken}`);
+  assert.equal(userB.id, userA.id);
+  assert.equal(userB.name, "Priya Guest");
+  assert.equal(userB.phone, "+919845099887");
+
+  // 4. createPaymentForOrder hydrates the order from orderSnapshot and marks it PAID without failing
+  const payment = createPaymentForOrder(userB.id, order.id, order.totalPaise, "pay-serverless-1", {
+    method: "UPI_VPA",
+    methodLabel: "UPI (priya@okaxis)",
+    upiVpa: "priya@okaxis",
+    orderSnapshot: order,
+  });
+  assert.equal(payment.status, "CAPTURED");
+  assert.equal(payment.order?.status, "PAID");
+  assert.equal(payment.order?.paymentMethodLabel, "UPI (priya@okaxis)");
+
+  const hydratedOrder = trackOrderByNumber(order.orderNumber);
+  assert.equal(hydratedOrder.status, "PAID");
+  assert.equal(hydratedOrder.orderNumber, order.orderNumber);
+
+  // 5. Refresh token also works statelessly across cold worker instances
+  resetBackendState();
+  const refreshed = refreshUserSession(tokens.refreshToken);
+  const userC = requireUser(`Bearer ${refreshed.accessToken}`);
+  assert.equal(userC.id, userA.id);
+});

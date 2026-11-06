@@ -31,14 +31,14 @@ interface NavLink {
 
 export function Header() {
   const pathname = usePathname();
-  const { status, me } = useAuth();
+  const { status, me, logout } = useAuth();
   const { diet, setDiet, location } = usePrefs();
   const authed = status === "authed";
 
   const links: NavLink[] = [
     { href: "/", label: "Explore" },
     { href: "/track", label: "Track order" },
-    ...(authed ? [{ href: "/orders", label: "Orders" }] : []),
+    { href: "/orders", label: "Orders" },
   ];
 
   const account: NavLink | null =
@@ -97,6 +97,15 @@ export function Header() {
             >
               {account.label}
             </Link>
+          )}
+          {authed && (
+            <button
+              type="button"
+              onClick={logout}
+              className="hidden whitespace-nowrap rounded-full border border-stone-300 bg-white px-3.5 py-1.5 text-xs font-semibold text-stone-700 transition hover:bg-stone-100 md:inline-flex"
+            >
+              Sign out
+            </button>
           )}
           <Sheet>
             <SheetTrigger asChild>
@@ -179,12 +188,60 @@ export function Header() {
                       </SheetClose>
                     </li>
                   ))}
+                  {authed && (
+                    <li>
+                      <SheetClose asChild>
+                        <button
+                          type="button"
+                          onClick={logout}
+                          className="block w-full rounded-xl px-3 py-2.5 text-left text-base font-semibold text-red-800 hover:bg-red-50"
+                        >
+                          Sign out
+                        </button>
+                      </SheetClose>
+                    </li>
+                  )}
                 </ul>
               </div>
             </SheetContent>
           </Sheet>
         </nav>
       </div>
+
+      {/* Responsive mobile & tablet quick-navigation bar so Explore, Track order, and Orders are always accessible */}
+      <nav
+        aria-label="Mobile quick navigation"
+        className="border-t border-stone-200/80 bg-cream/95 px-4 py-1.5 md:hidden"
+      >
+        <ul className="mx-auto flex max-w-6xl items-center justify-between gap-1 overflow-x-auto text-xs">
+          {links.map((l) => {
+            const active = isLinkActive(l.href);
+            return (
+              <li key={l.href} className="shrink-0">
+                <Link
+                  href={l.href}
+                  aria-current={active ? "page" : undefined}
+                  className={`inline-flex items-center rounded-full px-3 py-1.5 font-semibold transition-colors ${
+                    active ? "bg-leaf text-white" : "text-stone-700 hover:bg-stone-100"
+                  }`}
+                >
+                  {l.label}
+                </Link>
+              </li>
+            );
+          })}
+          {account && (
+            <li className="shrink-0 sm:hidden">
+              <Link
+                href={account.href}
+                className="inline-flex items-center rounded-full bg-stone-200/80 px-3 py-1.5 font-bold text-ink"
+              >
+                {account.label}
+              </Link>
+            </li>
+          )}
+        </ul>
+      </nav>
     </header>
   );
 }

@@ -1,5 +1,6 @@
 "use client";
 
+import { usePathname, useRouter } from "next/navigation";
 import { useEffect } from "react";
 import { useAuth } from "./auth-context";
 import { portalLoginPath, resolvePortalScope } from "./roles";
@@ -10,15 +11,22 @@ import { portalLoginPath, resolvePortalScope } from "./roles";
  */
 export function useRequireAuth(skip = false, loginPath?: string) {
   const auth = useAuth();
+  const router = useRouter();
+  const pathname = usePathname();
+
   useEffect(() => {
     if (skip) return;
     if (auth.status === "anon") {
-      const pathname = window.location.pathname;
-      const here = pathname + window.location.search;
-      const target = loginPath ?? portalLoginPath(resolvePortalScope(pathname));
-      window.location.replace(`${target}?next=${encodeURIComponent(here)}`);
+      const currentPath = pathname || (typeof window !== "undefined" ? window.location.pathname : "/");
+      const search = typeof window !== "undefined" ? window.location.search : "";
+      const here = currentPath + search;
+      const target = loginPath ?? portalLoginPath(resolvePortalScope(currentPath));
+      if (currentPath !== target) {
+        router.replace(`${target}?next=${encodeURIComponent(here)}`);
+      }
     }
-  }, [auth.status, skip, loginPath]);
+  }, [auth.status, skip, loginPath, pathname, router]);
+
   return auth;
 }
 

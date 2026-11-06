@@ -6,7 +6,7 @@
     "storefront"
   ],
   "scripts": {
-    "dev": "npm run dev --workspace=storefront",
+    "dev": "next dev storefront -p 3000 -H 0.0.0.0",
     "build": "node storefront/build-prod.mjs",
     "start": "node storefront/start-prod.mjs",
     "lint": "npm run lint --workspace=storefront",

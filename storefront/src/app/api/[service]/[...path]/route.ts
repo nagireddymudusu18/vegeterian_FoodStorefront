@@ -73,13 +73,13 @@ function sseResponse(initialFrames: string[]): Response {
       for (const frame of initialFrames) {
         controller.enqueue(encoder.encode(frame));
       }
+      controller.close();
     },
   });
   return new Response(stream, {
     headers: {
       "Content-Type": "text/event-stream",
       "Cache-Control": "no-cache, no-transform",
-      Connection: "keep-alive",
     },
   });
 }
@@ -650,24 +650,26 @@ async function handle(req: NextRequest, ctx: RouteContext): Promise<Response> {
         requireUser(authHeader);
         const id = decodeURIComponent(path[1]);
         const order = state.orders.get(id);
-        if (!order) throw new HttpProblem(404, "Order not found");
-        return sseResponse([`event: status\ndata: ${JSON.stringify({ status: order.status })}\n\n`]);
+        const currentStatus = order?.status ?? "PAID";
+        return sseResponse([`event: status\ndata: ${JSON.stringify({ status: currentStatus })}\n\n`]);
       }
 
       if (method === "POST" && path[0] === "orders" && path.length === 3 && path[2] === "cancel") {
-        requireUser(authHeader);
+        const user = requireUser(authHeader);
         const id = decodeURIComponent(path[1]);
         let reason: string | undefined;
+        let orderSnapshot: import("@/lib/api").Order | undefined;
         try {
           const text = await req.text();
           if (text) {
-            const parsed = JSON.parse(text) as { reason?: string };
+            const parsed = JSON.parse(text) as { reason?: string; orderSnapshot?: import("@/lib/api").Order };
             reason = parsed.reason;
+            orderSnapshot = parsed.orderSnapshot;
           }
         } catch {
           /* optional body */
         }
-        return NextResponse.json(cancelOrderByCustomer(id, reason));
+        return NextResponse.json(cancelOrderByCustomer(id, reason, user.id, orderSnapshot));
       }
 
       if (

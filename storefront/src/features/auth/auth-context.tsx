@@ -1,10 +1,10 @@
 "use client";
 
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { identity, type Me } from "@/lib/api";
 import { getTokens, setTokens, subscribeTokens } from "@/lib/tokens";
-import { resolvePortalScope, type PortalScope } from "./roles";
+import { portalLoginPath, resolvePortalScope, type PortalScope } from "./roles";
 
 type Status = "loading" | "authed" | "anon";
 
@@ -21,6 +21,7 @@ const Ctx = createContext<AuthCtx | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const pathname = usePathname();
+  const router = useRouter();
   const scope = resolvePortalScope(pathname);
   const [status, setStatus] = useState<Status>("loading");
   const [me, setMe] = useState<Me | null>(null);
@@ -33,12 +34,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     try {
       const m = await identity.me();
+      if (!m) {
+        setTokens(null, scope);
+        setMe(null);
+        setStatus("anon");
+        return;
+      }
       setMe(m);
       setStatus("authed");
     } catch {
-      // 401 is handled (refresh -> redirect) in the api client; other errors leave us signed-out in the UI only.
+      // Never leave status="authed" with me=null (which causes an infinite spinner on guarded layouts).
+      setTokens(null, scope);
       setMe(null);
-      setStatus(getTokens(scope) ? "authed" : "anon");
+      setStatus("anon");
     }
   }, [scope]);
 
@@ -56,7 +64,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setTokens(null, scope);
     setMe(null);
     setStatus("anon");
-  }, [scope]);
+    const target = scope === "customer" ? "/login" : portalLoginPath(scope);
+    if (pathname !== target) {
+      router.replace(target);
+    }
+  }, [scope, pathname, router]);
 
   const value = useMemo(() => ({ status, me, scope, reload, logout }), [status, me, scope, reload, logout]);
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
