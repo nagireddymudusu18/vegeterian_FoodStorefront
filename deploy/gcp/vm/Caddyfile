@@ -3,8 +3,10 @@
 }
 
 # Sandbox VM: one host (<ip>.sslip.io), storefront at / and every API under /api/<service>/ (same origin).
+# Production 4-Storefront Mode A: set PORTAL_DOMAINS="veggoeats.in, restaurant.veggoeats.in, partner.veggoeats.in, admin.veggoeats.in"
+# and NEXT_PUBLIC_CUSTOMER_HOST="veggoeats.in"; Next.js Edge Middleware isolates each host to its own storefront.
 # Services listen on localhost only; Caddy is the only public listener.
-{$DOMAIN} {
+{$PORTAL_DOMAINS:{$DOMAIN}} {
 	encode zstd gzip
 
 	# Reject oversized request payloads at the TLS edge before they reach the 256 MB heap services.

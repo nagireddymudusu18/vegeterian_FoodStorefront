@@ -3,6 +3,8 @@ import type { StaffOrder } from "@/lib/api";
 import {
   computeOrderSla,
   filterKitchenOrders,
+  formatElapsedClock,
+  formatOrderPlacedTime,
   resolveKitchenStage,
   summarizeKitchenBoard,
 } from "./kitchen-ops";
@@ -50,10 +52,45 @@ describe("kitchen-ops", () => {
     expect(filterKitchenOrders(ORDERS, { query: "tofu" })).toHaveLength(1);
   });
 
-  it("computes SLA urgency tiers", () => {
+  it("formats elapsed seconds into MM:SS and Xh YYm kitchen clock strings", () => {
+    expect(formatElapsedClock(0)).toBe("00:00");
+    expect(formatElapsedClock(-15)).toBe("00:00");
+    expect(formatElapsedClock(42)).toBe("00:42");
+    expect(formatElapsedClock(374)).toBe("06:14");
+    expect(formatElapsedClock(3599)).toBe("59:59");
+    expect(formatElapsedClock(3600)).toBe("1h 00m");
+    expect(formatElapsedClock(4500)).toBe("1h 15m");
+  });
+
+  it("computes SLA urgency tiers, live clock labels, and progress percent from createdAt", () => {
     const now = Date.parse("2026-11-04T16:00:00.000Z");
-    expect(computeOrderSla("2026-11-04T15:55:00.000Z", now).urgency).toBe("ON_TIME");
-    expect(computeOrderSla("2026-11-04T15:45:00.000Z", now).urgency).toBe("AT_RISK");
-    expect(computeOrderSla("2026-11-04T15:30:00.000Z", now).urgency).toBe("OVERDUE");
+
+    const onTime = computeOrderSla("2026-11-04T15:55:00.000Z", now);
+    expect(onTime.urgency).toBe("ON_TIME");
+    expect(onTime.elapsedSeconds).toBe(300);
+    expect(onTime.elapsedClock).toBe("05:00");
+    expect(onTime.progressPercent).toBe(25);
+
+    const atRisk = computeOrderSla("2026-11-04T15:45:00.000Z", now);
+    expect(atRisk.urgency).toBe("AT_RISK");
+    expect(atRisk.elapsedClock).toBe("15:00");
+    expect(atRisk.progressPercent).toBe(75);
+    expect(atRisk.badgeLabel).toBe("Prep SLA Due");
+
+    const overdue = computeOrderSla("2026-11-04T15:30:00.000Z", now);
+    expect(overdue.urgency).toBe("OVERDUE");
+    expect(overdue.elapsedClock).toBe("30:00");
+    expect(overdue.progressPercent).toBe(100);
+    expect(overdue.badgeLabel).toBe("SLA Overdue");
+
+    const longOverdue = computeOrderSla("2026-11-04T14:55:00.000Z", now);
+    expect(longOverdue.elapsedClock).toBe("1h 05m");
+    expect(longOverdue.elapsedLabel).toBe("1h 5m ago");
+
+    const invalid = computeOrderSla("not-a-timestamp", now);
+    expect(invalid.elapsedClock).toBe("00:00");
+    expect(invalid.progressPercent).toBe(0);
+    expect(formatOrderPlacedTime("not-a-timestamp")).toBeNull();
+    expect(formatOrderPlacedTime("2026-11-04T15:55:00.000Z")).toBeTruthy();
   });
 });

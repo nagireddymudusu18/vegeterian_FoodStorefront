@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import { identity } from "@/lib/api";
 import { rolesFromAccessToken, safeAdminNext, useAuth, validateEmail } from "@/features/auth";
 import { getTokens } from "@/lib/tokens";
+import { resolveExternalPortalUrls } from "@/lib/portal-isolation";
 import { ErrorBox } from "@/components/ui";
 
 const INPUT = "w-full rounded-xl border border-stone-300 bg-white px-3 py-2.5 focus:border-green-600";
@@ -145,11 +146,18 @@ export default function AdminLoginPage() {
           </form>
         )}
       </div>
-      <p className="text-center text-sm text-stone-600">
-        <Link href="/" className="font-medium text-green-800 underline">
-          Back to the store
-        </Link>
-      </p>
+      {resolveExternalPortalUrls().customer && (
+        <p className="text-center text-sm text-stone-600">
+          <a
+            href={resolveExternalPortalUrls().customer}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="font-medium text-green-800 underline"
+          >
+            Open Customer Storefront
+          </a>
+        </p>
+      )}
     </main>
   );
 }

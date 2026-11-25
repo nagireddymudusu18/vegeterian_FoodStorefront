@@ -4,7 +4,15 @@
   "private": true,
   "scripts": {
     "dev": "next dev --turbopack -p 3000 -H 0.0.0.0",
+    "dev:customer": "NEXT_PUBLIC_APP_PORTAL=customer next dev --turbopack -p 3000 -H 0.0.0.0",
+    "dev:restaurant": "NEXT_PUBLIC_APP_PORTAL=restaurant next dev --turbopack -p 3001 -H 0.0.0.0",
+    "dev:partner": "NEXT_PUBLIC_APP_PORTAL=partner next dev --turbopack -p 3002 -H 0.0.0.0",
+    "dev:admin": "NEXT_PUBLIC_APP_PORTAL=admin next dev --turbopack -p 3003 -H 0.0.0.0",
     "build": "node build-prod.mjs",
+    "build:customer": "NEXT_PUBLIC_APP_PORTAL=customer node build-prod.mjs",
+    "build:restaurant": "NEXT_PUBLIC_APP_PORTAL=restaurant node build-prod.mjs",
+    "build:partner": "NEXT_PUBLIC_APP_PORTAL=partner node build-prod.mjs",
+    "build:admin": "NEXT_PUBLIC_APP_PORTAL=admin node build-prod.mjs",
     "start": "node start-prod.mjs",
     "lint": "tsc --noEmit",
     "test": "vitest run"

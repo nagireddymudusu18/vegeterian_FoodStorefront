@@ -13,7 +13,7 @@ import PartnerLoginPage from "./login/page";
 export default function PartnerLayout({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-  const isLoginPage = pathname === "/partner/login";
+  const isLoginPage = pathname === "/partner/login" || pathname === "/login";
   const { status, logout } = useRequireAuth(isLoginPage, "/partner/login");
   const enabled = useFlag("delivery_module");
 

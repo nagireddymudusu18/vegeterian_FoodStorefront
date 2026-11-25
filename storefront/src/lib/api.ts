@@ -1,6 +1,7 @@
 import { getTokens, setTokens } from "./tokens";
+import { resolveClientPortalState } from "./portal-isolation";
+import { portalLoginPath, scopeToAccountDomain } from "@/features/auth/roles";
 import {
-  resolveAccountDomain,
   type AccountDomain,
   type CustomerDietaryCohort,
   type CustomerGroupProfile,
@@ -263,11 +264,12 @@ function buildUrl(service: Service, path: string, query?: ReqOptions["query"]): 
 }
 
 function currentClientDomain(): AccountDomain {
-  if (typeof window === "undefined") return "CUSTOMER";
-  return resolveAccountDomain({
-    hostname: window.location.hostname,
-    pathname: window.location.pathname,
-  });
+  if (typeof window === "undefined") {
+    const { activePortal } = resolveClientPortalState("/");
+    return scopeToAccountDomain(activePortal);
+  }
+  const { activePortal } = resolveClientPortalState(window.location.pathname);
+  return scopeToAccountDomain(activePortal, window.location.hostname);
 }
 
 async function send(service: Service, path: string, o: ReqOptions, token?: string): Promise<Response> {
@@ -331,21 +333,21 @@ export function redirectToLogin(): void {
   if (typeof window === "undefined") return;
   const pathname = window.location.pathname;
   const here = pathname + window.location.search;
-  if (pathname.startsWith("/login")) return;
-  if (pathname === "/admin" || pathname.startsWith("/admin/")) {
-    // admins sign in on their own page, and the invite page is reachable without a session
-    if (/^\/admin\/(login|accept)/.test(pathname)) return;
-    window.location.assign(`/admin/login?next=${encodeURIComponent(here)}`);
+  const { activePortal } = resolveClientPortalState(pathname);
+  if (pathname === "/login" || pathname.startsWith("/login/")) return;
+  if (activePortal === "admin") {
+    if (/^\/(admin\/)?(login|accept)/.test(pathname)) return;
+    window.location.assign(`${portalLoginPath("admin")}?next=${encodeURIComponent(here)}`);
     return;
   }
-  if (pathname === "/restaurant" || pathname.startsWith("/restaurant/")) {
-    if (pathname.startsWith("/restaurant/login")) return;
-    window.location.assign(`/restaurant/login?next=${encodeURIComponent(here)}`);
+  if (activePortal === "restaurant") {
+    if (/^\/(restaurant\/)?login/.test(pathname)) return;
+    window.location.assign(`${portalLoginPath("restaurant")}?next=${encodeURIComponent(here)}`);
     return;
   }
-  if (pathname === "/partner" || pathname.startsWith("/partner/")) {
-    if (pathname.startsWith("/partner/login")) return;
-    window.location.assign(`/partner/login?next=${encodeURIComponent(here)}`);
+  if (activePortal === "partner") {
+    if (/^\/(partner\/)?login/.test(pathname)) return;
+    window.location.assign(`${portalLoginPath("partner")}?next=${encodeURIComponent(here)}`);
     return;
   }
   window.location.assign(`/login?next=${encodeURIComponent(here)}`);

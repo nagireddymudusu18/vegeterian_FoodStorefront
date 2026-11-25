@@ -1,14 +1,35 @@
 import { safeInternalPath } from "./redirect";
 import { isValidAccountDomain, resolveAccountDomain, type AccountDomain } from "../customer-groups/rules";
+import {
+  resolveLockedPortal,
+  type PortalScope,
+} from "../../lib/portal-isolation";
 
-export type PortalScope = "customer" | "admin" | "restaurant" | "partner";
+export type { PortalScope };
 
 const ADMIN_PATH_RE = /^\/admin(?:$|[/?#])/;
 const RESTAURANT_PATH_RE = /^\/restaurant(?:$|[/?#])/;
 const PARTNER_PATH_RE = /^\/partner(?:$|[/?#])/;
 
-/** Resolves which of the four decoupled portals owns a given URL pathname. */
-export function resolvePortalScope(pathname: string | null | undefined): PortalScope {
+/** Resolves which of the four decoupled portals owns a given URL pathname (honoring any active portal lock). */
+export function resolvePortalScope(
+  pathname: string | null | undefined,
+  options?: {
+    hostname?: string | null;
+    envPortal?: string | null;
+    customerHost?: string | null;
+    previewLockCookie?: string | null;
+  },
+): PortalScope {
+  if (options) {
+    const { lockedPortal } = resolveLockedPortal({
+      envPortal: options.envPortal,
+      host: options.hostname,
+      customerHost: options.customerHost,
+      previewLockCookie: options.previewLockCookie,
+    });
+    if (lockedPortal) return lockedPortal;
+  }
   if (!pathname) return "customer";
   if (ADMIN_PATH_RE.test(pathname)) return "admin";
   if (RESTAURANT_PATH_RE.test(pathname)) return "restaurant";

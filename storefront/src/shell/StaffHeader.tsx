@@ -31,7 +31,18 @@ export function StaffHeader({
 }) {
   const pathname = usePathname();
   const { me } = useAuth();
-  const active = (href: string) => (href === homeHref ? pathname === href : pathname === href || pathname.startsWith(`${href}/`));
+  const active = (href: string) => {
+    if (href === homeHref) {
+      return pathname === href || pathname === "/";
+    }
+    const stripped = href.startsWith(`${homeHref}/`) ? href.slice(homeHref.length) : href;
+    return (
+      pathname === href ||
+      pathname.startsWith(`${href}/`) ||
+      pathname === stripped ||
+      pathname.startsWith(`${stripped}/`)
+    );
+  };
   const partnerName = me?.name?.trim() || me?.email || me?.phone || null;
 
   return (

@@ -10,9 +10,19 @@ Files: `deploy/gcp/vm/` (`loader.sh`, `install.sh`, `run-service.sh`, `Caddyfile
 ## 1. Domain and DNS
 1. Check `veggoeats.in` is free and search the IP India trademark database for "Veggo" before buying.
 2. Buy the domain (Namecheap, GoDaddy or BigRock) and put DNS on Cloudflare (free).
-3. Create `A` records for `veggoeats.in` and `www` pointing to the VM's static IP. Set them to **DNS only** (grey cloud) at first so Caddy can get its certificate.
+3. Create `A` records for `veggoeats.in`, `www`, `restaurant`, `partner`, and `admin` pointing to the VM's static IP. Set them to **DNS only** (grey cloud) at first so Caddy can get its certificate.
 4. Email: Zoho Mail or Google Workspace for `support@`. For transactional mail add SPF, DKIM and DMARC records from the sender (Amazon SES or Resend).
 5. Re-run `gen-cloud-env.mjs --host veggoeats.in ... --keep-keys`, rebuild the storefront with `NEXT_PUBLIC_API_BASE=https://veggoeats.in` (it is baked in at build time) and reset the VM.
+
+### Four-Storefront Production Isolation (1 Repo -> 4 Independent Apps)
+The repository enforces strict boundary isolation between **Customer**, **Restaurant**, **Delivery Partner**, and **Admin** in Next.js Edge Middleware (`storefront/src/middleware.ts`). In production, the dev switcher bar is disabled and you can deploy in either mode:
+
+- **Mode A — 4 Subdomains on 1 Server (Single VM / Caddy)**:
+  - Set `PORTAL_DOMAINS="veggoeats.in, restaurant.veggoeats.in, partner.veggoeats.in, admin.veggoeats.in"` for Caddy and `NEXT_PUBLIC_CUSTOMER_HOST=veggoeats.in` on the Next.js server.
+  - Middleware inspects `Host` on every request: `veggoeats.in` serves only the Customer Storefront (returning `404` for `/restaurant`, `/partner`, `/admin`), while `restaurant.veggoeats.in`, `partner.veggoeats.in`, and `admin.veggoeats.in` each serve only their own app at `/` and block all other portals with `404`.
+- **Mode B — 4 Separate Deployments from 1 Repo (Cloud Run / Vercel)**:
+  - Deploy the same repo 4 times with `NEXT_PUBLIC_APP_PORTAL` set to `customer`, `restaurant`, `partner`, or `admin` (or build locally with `npm run build:customer`, `build:restaurant`, `build:partner`, `build:admin`).
+  - Optionally set `NEXT_PUBLIC_RESTAURANT_PORTAL_URL` and `NEXT_PUBLIC_PARTNER_PORTAL_URL` on the Customer deployment if you want external footer links to the partner domains.
 
 ## 2. Sandbox versus production
 - Sandbox: e2-medium VM, `db-f1-micro` Cloud SQL, fake payment gateway, logging SMS/email providers, demo data.
