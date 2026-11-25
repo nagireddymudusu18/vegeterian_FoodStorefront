@@ -4,6 +4,7 @@ import {
   rolesFromAccessToken,
   type PortalScope,
 } from "@/features/auth/roles";
+import { PORTAL_SCOPES, readPreviewLockCookie } from "./portal-isolation";
 
 /**
  * Access/refresh token holder: in memory + localStorage, isolated per portal scope
@@ -20,8 +21,17 @@ function storageKey(scope: PortalScope): string {
 
 function activeScope(explicit?: PortalScope): PortalScope {
   if (explicit) return explicit;
-  if (typeof window === "undefined") return "customer";
-  return resolvePortalScope(window.location.pathname);
+  if (typeof window === "undefined") {
+    return resolvePortalScope("/", {
+      envPortal: process.env.NEXT_PUBLIC_APP_PORTAL,
+    });
+  }
+  return resolvePortalScope(window.location.pathname, {
+    hostname: window.location.host,
+    envPortal: process.env.NEXT_PUBLIC_APP_PORTAL,
+    customerHost: process.env.NEXT_PUBLIC_CUSTOMER_HOST,
+    previewLockCookie: readPreviewLockCookie(),
+  });
 }
 
 export interface Tokens {
@@ -144,4 +154,22 @@ export function subscribeTokens(listener: () => void): () => void {
     listeners.delete(listener);
   };
 }
+
+/**
+ * Returns which of the four segregated storefronts currently hold an active session
+ * in this browser (so the dev/preview switcher can reflect simultaneous logins).
+ */
+export function getAuthenticatedPortals(): Record<PortalScope, boolean> {
+  const result: Record<PortalScope, boolean> = {
+    customer: false,
+    restaurant: false,
+    partner: false,
+    admin: false,
+  };
+  for (const scope of PORTAL_SCOPES) {
+    result[scope] = Boolean(load(scope)?.accessToken);
+  }
+  return result;
+}
+
 

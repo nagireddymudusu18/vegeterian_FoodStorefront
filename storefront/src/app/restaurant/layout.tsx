@@ -13,7 +13,7 @@ import RestaurantLoginPage from "./login/page";
 export default function RestaurantLayout({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-  const isLoginPage = pathname === "/restaurant/login";
+  const isLoginPage = pathname === "/restaurant/login" || pathname === "/login";
   const { status, me, logout } = useRequireAuth(isLoginPage, "/restaurant/login");
 
   if (isLoginPage || status === "anon") {

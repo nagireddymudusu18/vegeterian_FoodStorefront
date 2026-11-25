@@ -3,8 +3,9 @@
 import { usePathname, useRouter } from "next/navigation";
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { identity, type Me } from "@/lib/api";
+import { resolveClientPortalState } from "@/lib/portal-isolation";
 import { getTokens, setTokens, subscribeTokens } from "@/lib/tokens";
-import { portalLoginPath, resolvePortalScope, type PortalScope } from "./roles";
+import { portalLoginPath, type PortalScope } from "./roles";
 
 type Status = "loading" | "authed" | "anon";
 
@@ -22,7 +23,7 @@ const Ctx = createContext<AuthCtx | null>(null);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-  const scope = resolvePortalScope(pathname);
+  const { activePortal: scope } = resolveClientPortalState(pathname);
   const [status, setStatus] = useState<Status>("loading");
   const [me, setMe] = useState<Me | null>(null);
 

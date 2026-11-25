@@ -6,8 +6,16 @@
     "storefront"
   ],
   "scripts": {
-    "dev": "next dev storefront -p 3000 -H 0.0.0.0",
+    "dev": "next dev storefront --turbopack -p 3000 -H 0.0.0.0",
+    "dev:customer": "NEXT_PUBLIC_APP_PORTAL=customer next dev storefront --turbopack -p 3000 -H 0.0.0.0",
+    "dev:restaurant": "NEXT_PUBLIC_APP_PORTAL=restaurant next dev storefront --turbopack -p 3001 -H 0.0.0.0",
+    "dev:partner": "NEXT_PUBLIC_APP_PORTAL=partner next dev storefront --turbopack -p 3002 -H 0.0.0.0",
+    "dev:admin": "NEXT_PUBLIC_APP_PORTAL=admin next dev storefront --turbopack -p 3003 -H 0.0.0.0",
     "build": "node storefront/build-prod.mjs",
+    "build:customer": "NEXT_PUBLIC_APP_PORTAL=customer node storefront/build-prod.mjs",
+    "build:restaurant": "NEXT_PUBLIC_APP_PORTAL=restaurant node storefront/build-prod.mjs",
+    "build:partner": "NEXT_PUBLIC_APP_PORTAL=partner node storefront/build-prod.mjs",
+    "build:admin": "NEXT_PUBLIC_APP_PORTAL=admin node storefront/build-prod.mjs",
     "start": "node storefront/start-prod.mjs",
     "lint": "npm run lint --workspace=storefront",
     "test": "npm run test --workspace=storefront"
@@ -16,6 +24,7 @@
     "@fontsource-variable/plus-jakarta-sans": "^5.3.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "lucide-react": "^1.79.0",
     "motion": "^14.9.0",
     "next": "15.5.28",
     "radix-ui": "^1.8.1",

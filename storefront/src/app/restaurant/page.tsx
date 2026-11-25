@@ -8,6 +8,8 @@ import { CertBadge } from "@/features/catalog";
 import {
   computeOrderSla,
   filterKitchenOrders,
+  formatOrderPlacedTime,
+  OrderElapsedIndicator,
   summarizeKitchenBoard,
   type KitchenQueueStage,
 } from "@/features/orders";
@@ -68,6 +70,14 @@ export default function RestaurantHome() {
   const [list, setList] = useState<StaffOrder[] | null>(null);
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  const [nowMs, setNowMs] = useState<number>(() => Date.now());
+
+  useEffect(() => {
+    if (history) return;
+    setNowMs(Date.now());
+    const timer = setInterval(() => setNowMs(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [history]);
 
   useEffect(() => {
     if (!me) return;
@@ -384,35 +394,44 @@ export default function RestaurantHome() {
       ) : (
         <ul className="space-y-3">
           {filteredOrders.map((o) => {
-            const sla = computeOrderSla(o.createdAt);
-            const slaClass =
-              sla.urgency === "OVERDUE"
-                ? "bg-red-100 text-red-900 ring-1 ring-red-300"
-                : sla.urgency === "AT_RISK"
-                  ? "bg-amber-100 text-amber-950 ring-1 ring-amber-300"
-                  : "bg-emerald-50 text-emerald-900 ring-1 ring-emerald-200";
+            const sla = computeOrderSla(o.createdAt, nowMs);
+            const statusLabel = LABEL[o.status] ?? o.status;
+            const placedAt = formatOrderPlacedTime(o.createdAt);
 
             return (
-              <li key={o.id} className="card space-y-3 p-5">
+              <li
+                key={o.id}
+                className={`card space-y-3 p-5 ${
+                  !history && sla.urgency === "OVERDUE" ? "ring-1 ring-red-300" : ""
+                }`}
+              >
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="font-mono text-base font-extrabold tracking-tight text-ink">
                     #{o.orderNumber}
                   </span>
                   <span className="rounded-md bg-stone-100 px-2.5 py-0.5 text-xs font-bold text-stone-800">
-                    {LABEL[o.status] ?? o.status}
+                    {statusLabel}
                   </span>
-                  {!history && (
-                    <span className={`rounded-md px-2 py-0.5 text-xs font-bold ${slaClass}`}>
-                      {sla.badgeLabel} · {sla.elapsedLabel}
-                    </span>
-                  )}
                   {o.restaurantName && (
                     <span className="text-xs font-semibold text-stone-600">{o.restaurantName}</span>
+                  )}
+                  {history && placedAt && (
+                    <span className="text-xs text-stone-500">
+                      Placed {placedAt} · {sla.elapsedLabel}
+                    </span>
                   )}
                   <span className="ml-auto text-base font-extrabold tabular-nums text-ink">
                     {formatPaise(o.totalPaise)}
                   </span>
                 </div>
+
+                {!history && (
+                  <OrderElapsedIndicator
+                    createdAt={o.createdAt}
+                    statusLabel={statusLabel}
+                    nowMs={nowMs}
+                  />
+                )}
 
                 <ul className="divide-y divide-stone-100 rounded-xl bg-stone-50 px-3.5 py-2 text-sm text-stone-900">
                   {o.items.map((i, n) => (

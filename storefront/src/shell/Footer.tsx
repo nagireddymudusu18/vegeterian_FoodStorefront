@@ -11,11 +11,13 @@ import {
 } from "@/features/catalog";
 import { BrandLogo } from "@/components/Logo";
 import { BRAND } from "@/lib/brand";
+import { resolveExternalPortalUrls } from "@/lib/portal-isolation";
 
 export function Footer() {
   const router = useRouter();
   const pathname = usePathname();
   const { diet, setDiet, location } = usePrefs();
+  const externalPortals = resolveExternalPortalUrls();
 
   const handleDietClick = (next: DietFilter) => {
     setDiet(next);
@@ -106,20 +108,10 @@ export function Footer() {
             </ul>
           </div>
 
-          {/* Partners & Legal (No Admin link) */}
+          {/* Support & Legal (Strict Customer isolation; optional external portal URLs only when configured) */}
           <div className="col-span-2 space-y-2.5 sm:col-span-3">
-            <h2 className="text-xs font-bold uppercase tracking-wider text-ink">Partners &amp; Legal</h2>
+            <h2 className="text-xs font-bold uppercase tracking-wider text-ink">Support &amp; Legal</h2>
             <ul className="space-y-2 text-sm">
-              <li>
-                <Link href="/restaurant" className="transition hover:text-green-800 hover:underline">
-                  Restaurant Partner Portal
-                </Link>
-              </li>
-              <li>
-                <Link href="/partner" className="transition hover:text-green-800 hover:underline">
-                  Delivery Partner Portal
-                </Link>
-              </li>
               <li>
                 <Link href="/terms" className="transition hover:text-green-800 hover:underline">
                   Terms &amp; Privacy
@@ -135,6 +127,30 @@ export function Footer() {
                   Contact support
                 </Link>
               </li>
+              {externalPortals.restaurant && (
+                <li>
+                  <a
+                    href={externalPortals.restaurant}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="transition hover:text-green-800 hover:underline"
+                  >
+                    Restaurant Partner App
+                  </a>
+                </li>
+              )}
+              {externalPortals.partner && (
+                <li>
+                  <a
+                    href={externalPortals.partner}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="transition hover:text-green-800 hover:underline"
+                  >
+                    Delivery Partner App
+                  </a>
+                </li>
+              )}
             </ul>
           </div>
         </div>

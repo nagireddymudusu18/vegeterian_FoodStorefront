@@ -7,6 +7,7 @@ import { PrefsProvider } from "@/features/catalog";
 import { FlagsProvider } from "@/features/flags";
 import { Toaster } from "@/components/Toaster";
 import { MotionProvider } from "@/components/motion";
+import { PortalSwitcherBar } from "./PortalSwitcherBar";
 
 export function Providers({ children }: { children: ReactNode }) {
   return (
@@ -14,7 +15,10 @@ export function Providers({ children }: { children: ReactNode }) {
       <PrefsProvider>
         <AuthProvider>
           <FlagsProvider>
-            <CartProvider>{children}</CartProvider>
+            <CartProvider>
+              <PortalSwitcherBar />
+              {children}
+            </CartProvider>
           </FlagsProvider>
         </AuthProvider>
         <Toaster />
